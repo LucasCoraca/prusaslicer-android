@@ -206,6 +206,15 @@ void bootstrap()
         setenv("SSL_CERT_FILE", cabundle.c_str(), 1);
 
     extract_resources(context, resources);
+
+    // Debug aid: `adb shell run-as org.prusaport.slicer sh -c 'echo 5 > files/loglevel'` raises PrusaSlicer's log level
+    // (1 error .. 5 trace; the desktop app takes --loglevel) for the next launches.
+    std::ifstream loglevel_file((fs::path(files) / "loglevel").string());
+    int loglevel = 0;
+    if (loglevel_file >> loglevel && loglevel > 0) {
+        setenv("PS_LOGLEVEL", std::to_string(loglevel).c_str(), 1); // applied by CLI/Setup.cpp after its default
+        LOGI("log level %d", loglevel);
+    }
 }
 
 } // namespace prusa_android

@@ -8,7 +8,7 @@ import hashlib, os, sys, zipfile
 
 src, out = sys.argv[1], sys.argv[2]
 # desktop-only payloads that make no sense on a phone
-skip_top = {"udev", "workflows"}
+skip_top = {"udev"}
 entries = []
 for root, dirs, files in os.walk(src):
     rel_root = os.path.relpath(root, src)

@@ -2165,11 +2165,18 @@ index 0000000..10bac8f
 +
 +#endif // wxUSE_SECRETSTORE && __WXQT__ && __ANDROID__
 diff --git a/src/qt/toplevel.cpp b/src/qt/toplevel.cpp
-index 2c3fed1..5d21f0b 100644
+index 2c3fed1..e3454db 100644
 --- a/src/qt/toplevel.cpp
 +++ b/src/qt/toplevel.cpp
-@@ -12,6 +12,19 @@
+@@ -10,8 +10,26 @@
+ 
+ #include "wx/toplevel.h"
  #include "wx/qt/private/converter.h"
++
++#ifdef __ANDROID__
++#include <QtCore/QPointer>
++#include <QtCore/QTimer>
++#endif
  #include <QtGui/QIcon>
  #include <QtWidgets/QWidget>
 +#ifdef __ANDROID__
@@ -2188,7 +2195,7 @@ index 2c3fed1..5d21f0b 100644
  
  wxTopLevelWindowQt::wxTopLevelWindowQt(wxWindow *parent,
             wxWindowID winId,
-@@ -48,6 +61,16 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
+@@ -48,12 +66,38 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
  
  bool wxTopLevelWindowQt::Show(bool show)
  {
@@ -2205,7 +2212,29 @@ index 2c3fed1..5d21f0b 100644
      if ( !wxTopLevelWindowBase::Show(show) )
          return false;
  
-@@ -245,6 +268,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+     if ( show && !m_qtWindow->isActiveWindow() )
+         m_qtWindow->activateWindow();
+ 
++#ifdef __ANDROID__
++    // GTK maps a shown window and every GL canvas in it gets an expose (=> wxEVT_PAINT). Qt does not repaint GL
++    // children that were already composed while the frame was hidden for wx, so programs that initialise GL on the
++    // first paint after Show() (PrusaSlicer) would never get one: ask for it.
++    if ( show )
++    {
++        QPointer<QWidget> top(GetHandle());
++        QTimer::singleShot(0, top, [top] {
++            if ( top )
++                for ( QWidget* w : top->findChildren<QWidget*>() )
++                    if ( w->inherits("QOpenGLWidget") )
++                        w->update();
++        });
++    }
++#endif // __ANDROID__
++
+     return true;
+ }
+ 
+@@ -245,6 +289,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
      minW = wxMax(0, minW);
      minH = wxMax(0, minH);
  
@@ -2220,7 +2249,7 @@ index 2c3fed1..5d21f0b 100644
      incW = wxMax(0, incW);
      incH = wxMax(0, incH);
  
-@@ -254,3 +285,35 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -254,3 +306,35 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
  
      wxTopLevelWindowBase::DoSetSizeHints(minW, minH, maxW, maxH, incW, incH);
  }

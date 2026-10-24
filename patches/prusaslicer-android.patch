@@ -358,7 +358,7 @@ index f44b916..15c4c58 100644
      const char* display = boost::nowide::getenv("DISPLAY");
      // const char *wayland_display = boost::nowide::getenv("WAYLAND_DISPLAY");
 diff --git a/src/CLI/Setup.cpp b/src/CLI/Setup.cpp
-index 82e03d4..167cf9e 100644
+index 82e03d4..b2494f7 100644
 --- a/src/CLI/Setup.cpp
 +++ b/src/CLI/Setup.cpp
 @@ -286,6 +286,9 @@ static bool setup_common()
@@ -371,6 +371,18 @@ index 82e03d4..167cf9e 100644
  #elif defined SLIC3R_FHS
      // The application is packaged according to the Linux Filesystem Hierarchy Standard
      // Resources are set to the 'Architecture-independent (shared) data', typically /usr/share or /usr/local/share
+@@ -324,6 +327,11 @@ bool setup(Data& cli, int argc, char** argv)
+         if (loglevel != 0)
+             set_logging_level(loglevel);
+     }
++#ifdef __ANDROID__
++    // no command line on Android: android/app/bootstrap.cpp passes files/loglevel through PS_LOGLEVEL
++    if (const char *loglevel = ::getenv("PS_LOGLEVEL"))
++        set_logging_level(unsigned(std::atoi(loglevel)));
++#endif
+ 
+     if (cli.misc_config.has("threads"))
+         thread_count = cli.misc_config.opt_int("threads");
 diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
 index ae7d061..24bf494 100644
 --- a/src/CMakeLists.txt
@@ -591,10 +603,10 @@ index 71efa5d..a91bfcc 100644
      find_package(PkgConfig REQUIRED)
  
 diff --git a/src/slic3r/GUI/GLCanvas3D.cpp b/src/slic3r/GUI/GLCanvas3D.cpp
-index ae19510..936a229 100644
+index ae19510..9b056c1 100644
 --- a/src/slic3r/GUI/GLCanvas3D.cpp
 +++ b/src/slic3r/GUI/GLCanvas3D.cpp
-@@ -1,7966 +1,7988 @@
+@@ -1,7966 +1,8002 @@
 -///|/ Copyright (c) Prusa Research 2018 - 2023 Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, David Kocík @kocikdav, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
 -///|/ Copyright (c) BambuStudio 2023 manch1n @manch1n
 -///|/ Copyright (c) SuperSlicer 2023 Remi Durand @supermerill
@@ -8809,12 +8821,12 @@ index ae19510..936a229 100644
 +    return out;
 +}
 +
-+#ifdef __WXGTK3__
-+// wxGTK3 seems to simulate OSX behavior in regard to HiDPI scaling support.
++#if defined(__WXGTK3__) || defined(__ANDROID__)
++// wxGTK3 (and wxQt on Android, whose GL canvas is in physical pixels) simulate OSX behavior in regard to HiDPI scaling.
 +RetinaHelper::RetinaHelper(wxWindow* window) : m_window(window), m_self(nullptr) {}
 +RetinaHelper::~RetinaHelper() {}
 +float RetinaHelper::get_scale_factor() { return float(m_window->GetContentScaleFactor()); }
-+#endif // __WXGTK3__
++#endif // __WXGTK3__ || __ANDROID__
 +
 +// Fixed the collision between BuildVolume::Type::Convex and macro Convex defined inside /usr/include/X11/X.h that is included by WxWidgets 3.0.
 +#if defined(__linux__) && defined(Convex)
@@ -10666,8 +10678,22 @@ index ae19510..936a229 100644
 +        return;
 +
 +    // ensures this canvas is current and initialized
++    {   // TEMP-DEBUG android
++        static int n = 0;
++        if (n++ < 30)
++            BOOST_LOG_TRIVIAL(warning) << "DBG render: shown=" << _is_shown_on_screen() << " canvas_shown=" << m_canvas->IsShown()
++                << " onscreen=" << m_canvas->IsShownOnScreen() << " size=" << m_canvas->GetSize().x << "x" << m_canvas->GetSize().y
++                << " ctx=" << (m_context != nullptr);
++        if (n < 3)
++            for (wxWindow* w = m_canvas; w != nullptr; w = w->GetParent())
++                BOOST_LOG_TRIVIAL(warning) << "DBG   parent " << w->GetClassInfo()->GetClassName() << " name=" << w->GetName().ToUTF8().data()
++                    << " shown=" << w->IsShown() << " tlw=" << w->IsTopLevel();
++    }
 +    if (!_is_shown_on_screen() || !_set_current() || !wxGetApp().init_opengl())
 +        return;
++
++    // the framebuffer bound by the toolkit for this paint (not necessarily 0)
++    OpenGLManager::capture_default_framebuffer();
 +
 +    if (!is_initialized() && !init())
 +        return;
@@ -13706,7 +13732,7 @@ index ae19510..936a229 100644
 +            glsafe(::glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, (void*)thumbnail_data.pixels.data()));
 +    }
 +
-+    glsafe(::glBindFramebuffer(GL_FRAMEBUFFER, 0));
++    glsafe(::glBindFramebuffer(GL_FRAMEBUFFER, OpenGLManager::get_default_framebuffer()));
 +    glsafe(::glDeleteRenderbuffers(1, &render_depth));
 +    if (render_tex_buffer != 0)
 +        glsafe(::glDeleteRenderbuffers(1, &render_tex_buffer));
@@ -13802,7 +13828,7 @@ index ae19510..936a229 100644
 +            glsafe(::glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, (void*)thumbnail_data.pixels.data()));
 +    }
 +
-+    glsafe(::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0));
++    glsafe(::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, OpenGLManager::get_default_framebuffer()));
 +    glsafe(::glDeleteRenderbuffersEXT(1, &render_depth));
 +    if (render_tex_buffer != 0)
 +        glsafe(::glDeleteRenderbuffersEXT(1, &render_tex_buffer));
@@ -14622,14 +14648,14 @@ index ae19510..936a229 100644
 +                main_camera.apply_viewport();
 +
 +            if (framebuffers_type == OpenGLManager::EFramebufferType::Arb) {
-+                glsafe(::glBindFramebuffer(GL_FRAMEBUFFER, 0));
++                glsafe(::glBindFramebuffer(GL_FRAMEBUFFER, OpenGLManager::get_default_framebuffer()));
 +                if (render_depth != 0)
 +                    glsafe(::glDeleteRenderbuffers(1, &render_depth));
 +                if (render_fbo != 0)
 +                    glsafe(::glDeleteFramebuffers(1, &render_fbo));
 +            }
 +            else if (framebuffers_type == OpenGLManager::EFramebufferType::Ext) {
-+                glsafe(::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, 0));
++                glsafe(::glBindFramebufferEXT(GL_FRAMEBUFFER_EXT, OpenGLManager::get_default_framebuffer()));
 +                if (render_depth != 0)
 +                    glsafe(::glDeleteRenderbuffersEXT(1, &render_depth));
 +                if (render_fbo != 0)
@@ -16549,6 +16575,19 @@ index ae19510..936a229 100644
 +
 +} // namespace GUI
 +} // namespace Slic3r
+diff --git a/src/slic3r/GUI/GLCanvas3D.hpp b/src/slic3r/GUI/GLCanvas3D.hpp
+index dbaacc3..6b151cf 100644
+--- a/src/slic3r/GUI/GLCanvas3D.hpp
++++ b/src/slic3r/GUI/GLCanvas3D.hpp
+@@ -44,7 +44,7 @@ class wxGLContext;
+ 
+ // Support for Retina OpenGL on Mac OS.
+ // wxGTK3 seems to simulate OSX behavior in regard to HiDPI scaling support, enable it as well.
+-#define ENABLE_RETINA_GL (__APPLE__ || __WXGTK3__)
++#define ENABLE_RETINA_GL (__APPLE__ || __WXGTK3__ || __ANDROID__)
+ 
+ namespace Slic3r {
+ 
 diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
 index 8e65dcb..c508159 100644
 --- a/src/slic3r/GUI/GUI_App.cpp
@@ -16628,6 +16667,48 @@ index 7185e6b..dc08bee 100644
 +#if __linux__ && !defined(__ANDROID__)
      #define BACKGROUND_MESSAGE_LISTENER
  #endif // __linux__
+ 
+diff --git a/src/slic3r/GUI/OpenGLManager.cpp b/src/slic3r/GUI/OpenGLManager.cpp
+index b42a71f..ebd736f 100644
+--- a/src/slic3r/GUI/OpenGLManager.cpp
++++ b/src/slic3r/GUI/OpenGLManager.cpp
+@@ -268,6 +268,14 @@ std::vector<std::string> OpenGLManager::GLInfo::get_extensions_list() const
+ #endif // !SLIC3R_OPENGL_ES
+ 
+ OpenGLManager::GLInfo OpenGLManager::s_gl_info;
++unsigned int OpenGLManager::s_default_framebuffer = 0;
++
++void OpenGLManager::capture_default_framebuffer()
++{
++    GLint fbo = 0;
++    glsafe(::glGetIntegerv(GL_FRAMEBUFFER_BINDING, &fbo));
++    s_default_framebuffer = static_cast<unsigned int>(fbo);
++}
+ bool OpenGLManager::s_compressed_textures_supported = false;
+ bool OpenGLManager::s_force_power_of_two_textures = false;
+ OpenGLManager::EMultisampleState OpenGLManager::s_multisample = OpenGLManager::EMultisampleState::Unknown;
+diff --git a/src/slic3r/GUI/OpenGLManager.hpp b/src/slic3r/GUI/OpenGLManager.hpp
+index c4f36ca..16dc27f 100644
+--- a/src/slic3r/GUI/OpenGLManager.hpp
++++ b/src/slic3r/GUI/OpenGLManager.hpp
+@@ -104,6 +104,7 @@ private:
+     bool m_debug_enabled{ false };
+     GLShadersManager m_shaders_manager;
+     static GLInfo s_gl_info;
++    static unsigned int s_default_framebuffer;
+ #ifdef __APPLE__ 
+     // Part of hack to remove crash when closing the application on OSX 10.9.5 when building against newer wxWidgets
+     static OSInfo s_os_info;
+@@ -134,6 +135,10 @@ public:
+     static EFramebufferType get_framebuffers_type() { return s_framebuffers_type; }
+     static wxGLCanvas* create_wxglcanvas(wxWindow& parent, bool enable_auto_aa_samples);
+     static const GLInfo& get_gl_info() { return s_gl_info; }
++    // The framebuffer bound while a canvas paints: 0 (the window) with a plain GL canvas; with a toolkit that renders
++    // into an offscreen widget framebuffer (wxQt/QOpenGLWidget) it is that framebuffer.
++    static void capture_default_framebuffer();
++    static unsigned int get_default_framebuffer() { return s_default_framebuffer; }
+     static bool force_power_of_two_textures() { return s_force_power_of_two_textures; }
+ };
  
 diff --git a/src/slic3r/GUI/Search.cpp b/src/slic3r/GUI/Search.cpp
 index 75de52b..5f665ef 100644
@@ -16761,6 +16842,38 @@ index 7f58978..32727f1 100644
 +#if defined(__linux__) && !defined(__ANDROID__)
  #define EXIST_FONT_CONFIG_INCLUDE
  #endif
+ 
+diff --git a/src/slic3r/Utils/Http.cpp b/src/slic3r/Utils/Http.cpp
+index eed229f..3d548f4 100644
+--- a/src/slic3r/Utils/Http.cpp
++++ b/src/slic3r/Utils/Http.cpp
+@@ -181,6 +181,11 @@ Http::priv::priv(const std::string &url)
+     set_timeout_max(DEFAULT_TIMEOUT_MAX);
+ 	::curl_easy_setopt(curl, CURLOPT_URL, url.c_str());   // curl makes a copy internally
+ 	::curl_easy_setopt(curl, CURLOPT_USERAGENT, SLIC3R_APP_NAME "/" SLIC3R_VERSION);
++#ifdef __ANDROID__
++	// curl is built without a CA bundle; android/app/bootstrap.cpp writes the system trust store to SSL_CERT_FILE
++	if (const char *ca_file = ::getenv("SSL_CERT_FILE"))
++		::curl_easy_setopt(curl, CURLOPT_CAINFO, ca_file);
++#endif
+ 	::curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, &error_buffer.front());
+ 	::curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+ }
+diff --git a/src/slic3r/Utils/RetinaHelper.hpp b/src/slic3r/Utils/RetinaHelper.hpp
+index fc48659..f7b0c5e 100644
+--- a/src/slic3r/Utils/RetinaHelper.hpp
++++ b/src/slic3r/Utils/RetinaHelper.hpp
+@@ -22,9 +22,9 @@ public:
+     float get_scale_factor();
+ 
+ private:
+-#ifdef __WXGTK3__
++#if defined(__WXGTK3__) || defined(__ANDROID__)
+     wxWindow* m_window;
+-#endif // __WXGTK3__
++#endif // __WXGTK3__ || __ANDROID__
+     void* m_self;
+ };
  
 diff --git a/src/slic3r/Utils/WifiScanner.cpp b/src/slic3r/Utils/WifiScanner.cpp
 index 9eb5b81..8719b3b 100644
