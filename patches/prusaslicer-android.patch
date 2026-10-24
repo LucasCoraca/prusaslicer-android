@@ -16549,6 +16549,23 @@ index ae19510..936a229 100644
 +
 +} // namespace GUI
 +} // namespace Slic3r
+diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
+index 8e65dcb..c508159 100644
+--- a/src/slic3r/GUI/GUI_App.cpp
++++ b/src/slic3r/GUI/GUI_App.cpp
+@@ -1449,7 +1449,12 @@ bool GUI_App::on_init_inner()
+     }
+ 
+     SplashScreen* scrn = nullptr;
++#ifdef __ANDROID__
++    // wxSplashScreen has no parent frame yet at this point and crashes under wxQt; the launcher shows a splash anyway
++    if (false) {
++#else
+     if (app_config->get_bool("show_splash_screen")) {
++#endif
+         // make a bitmap with dark grey banner on the left side
+         wxBitmap bmp = SplashScreen::MakeBitmap(wxBitmap(from_u8(var(is_editor() ? "splashscreen.jpg" : "splashscreen-gcodepreview.jpg")), wxBITMAP_TYPE_JPEG));
+ 
 diff --git a/src/slic3r/GUI/Gizmos/GLGizmoMeasure.cpp b/src/slic3r/GUI/Gizmos/GLGizmoMeasure.cpp
 index 48b952a..68b6fc8 100644
 --- a/src/slic3r/GUI/Gizmos/GLGizmoMeasure.cpp
