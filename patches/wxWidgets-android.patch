@@ -814,10 +814,10 @@ index 0000000..db339fa
 +}
 diff --git a/src/qt/android/java/org/orcaport/wx/WebViewBridge.java b/src/qt/android/java/org/orcaport/wx/WebViewBridge.java
 new file mode 100644
-index 0000000..c9f1810
+index 0000000..fcc98a7
 --- /dev/null
 +++ b/src/qt/android/java/org/orcaport/wx/WebViewBridge.java
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,337 @@
 +package org.orcaport.wx;
 +
 +import android.app.Activity;
@@ -828,6 +828,7 @@ index 0000000..c9f1810
 +import android.view.View;
 +import android.view.ViewGroup;
 +import android.webkit.CookieManager;
++import android.webkit.HttpAuthHandler;
 +import android.webkit.JavascriptInterface;
 +import android.webkit.WebChromeClient;
 +import android.webkit.WebResourceError;
@@ -866,6 +867,7 @@ index 0000000..c9f1810
 +    private volatile String url = "", title = "", userAgent = "";
 +    private volatile boolean busy, canBack, canForward, destroyed;
 +    private boolean visible = true, devTools;
++    private volatile String authUser, authPassword;
 +
 +    public static WebViewBridge create(Activity activity, long id) {
 +        final WebViewBridge b = new WebViewBridge(activity, id);
@@ -941,6 +943,37 @@ index 0000000..c9f1810
 +
 +    public void loadUrl(final String u) {
 +        activity.runOnUiThread(new Runnable() { public void run() { if (web != null) web.loadUrl(u); }});
++    }
++
++    /** Load with one extra request header (e.g. "Authorization"), like a WebKitURIRequest with headers on GTK. */
++    public void loadUrlWithHeader(final String u, final String name, final String value) {
++        activity.runOnUiThread(new Runnable() { public void run() {
++            if (web == null) return;
++            Map<String, String> headers = new HashMap<>();
++            headers.put(name, value);
++            web.loadUrl(u, headers);
++        }});
++    }
++
++    /** Credentials answered to HTTP basic/digest auth challenges of this view; null user clears them. */
++    public void setHttpAuth(String user, String password) {
++        authUser = user;
++        authPassword = password;
++    }
++
++    /** Expire every cookie the shared CookieManager holds for this URL. */
++    public static void deleteCookies(final String u) {
++        final CookieManager cm = CookieManager.getInstance();
++        String cookies = cm.getCookie(u);
++        if (cookies != null) {
++            for (String c : cookies.split(";")) {
++                int eq = c.indexOf('=');
++                String name = (eq >= 0 ? c.substring(0, eq) : c).trim();
++                if (!name.isEmpty())
++                    cm.setCookie(u, name + "=; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
++            }
++        }
++        cm.flush();
 +    }
 +
 +    public void loadHtml(final String html, final String base) {
@@ -1050,7 +1083,14 @@ index 0000000..c9f1810
 +        }
 +    }
 +
++    // Pages written for WebKit (GTK/macOS wxWebView) post through window.webkit.messageHandlers.<name>; Android puts
++    // the handler at window.<name>. Alias the WebKit spelling to it.
++    private static final String WEBKIT_HANDLERS_ALIAS =
++        "if (!window.webkit || !window.webkit.messageHandlers) { window.webkit = window.webkit || {};"
++        + " window.webkit.messageHandlers = new Proxy({}, { get: function(t, n) { return window[n]; } }); }";
++
 +    private void runUserScripts() {
++        web.evaluateJavascript(WEBKIT_HANDLERS_ALIAS, null);
 +        ArrayList<String> copy;
 +        synchronized (userScripts) { copy = new ArrayList<>(userScripts); }
 +        for (String s : copy) web.evaluateJavascript(s, null);
@@ -1063,6 +1103,12 @@ index 0000000..c9f1810
 +    }
 +
 +    private final class Client extends WebViewClient {
++        @Override public void onReceivedHttpAuthRequest(WebView v, HttpAuthHandler h, String host, String realm) {
++            if (authUser != null)
++                h.proceed(authUser, authPassword);
++            else
++                super.onReceivedHttpAuthRequest(v, h, host, realm);
++        }
 +        @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
 +            nativeEvent(id, EV_NAVIGATING, r.getUrl().toString(), r.isForMainFrame() ? "" : "frame", r.hasGesture() ? 1 : 0);
 +            return false;

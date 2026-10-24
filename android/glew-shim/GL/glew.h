@@ -23,3 +23,26 @@ inline const GLubyte *glewGetErrorString(GLenum) { return reinterpret_cast<const
 #define GLEW_EXT_texture_compression_s3tc 0
 #define GLEW_EXT_texture_filter_anisotropic 0
 #define GLEW_KHR_debug 0
+
+// EXT_framebuffer_object names used by PrusaSlicer's fallback paths: the same entry points are core in GLES 3.
+// (OpenGLManager picks the "Arb" framebuffer type above, so these are compiled but not taken at run time.)
+#define glBindFramebufferEXT glBindFramebuffer
+#define glBindRenderbufferEXT glBindRenderbuffer
+#define glBlitFramebufferEXT glBlitFramebuffer
+#define glCheckFramebufferStatusEXT glCheckFramebufferStatus
+#define glDeleteFramebuffersEXT glDeleteFramebuffers
+#define glDeleteRenderbuffersEXT glDeleteRenderbuffers
+#define glFramebufferRenderbufferEXT glFramebufferRenderbuffer
+#define glFramebufferTexture2DEXT glFramebufferTexture2D
+#define glGenFramebuffersEXT glGenFramebuffers
+#define glGenRenderbuffersEXT glGenRenderbuffers
+#define glRenderbufferStorageEXT glRenderbufferStorage
+#define glRenderbufferStorageMultisampleEXT glRenderbufferStorageMultisample
+#define GL_COLOR_ATTACHMENT0_EXT GL_COLOR_ATTACHMENT0
+#define GL_DEPTH_ATTACHMENT_EXT GL_DEPTH_ATTACHMENT
+#define GL_DRAW_FRAMEBUFFER_EXT GL_DRAW_FRAMEBUFFER
+#define GL_READ_FRAMEBUFFER_EXT GL_READ_FRAMEBUFFER
+#define GL_FRAMEBUFFER_COMPLETE_EXT GL_FRAMEBUFFER_COMPLETE
+#define GL_FRAMEBUFFER_EXT GL_FRAMEBUFFER
+#define GL_RENDERBUFFER_EXT GL_RENDERBUFFER
+#define GL_MAX_SAMPLES_EXT GL_MAX_SAMPLES
