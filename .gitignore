@@ -1,0 +1,13 @@
+# upstream checkouts (made by fetch-sources.sh)
+/prusaslicer-src/
+/third_party/
+# build output, dependency prefix, downloads, local tools
+/build/
+/deps-android/
+/dist/
+/dl-cache/
+/hosttools
+/scratch-*/
+*.apk
+*.idsig
+/.claude/

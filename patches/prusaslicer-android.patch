@@ -1,0 +1,452 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 57b60ea..dfa765a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -44,6 +44,23 @@ option(SLIC3R_ENABLE_FORMAT_STEP "Enable compilation of STEP file support" ON)
+ option(SLIC3R_LOG_TO_FILE       "Enable logging into file")
+ option(SLIC3R_REPO_URL          "Preset repo URL")
+ 
++if (ANDROID)
++    # Our dependency prefix. The Qt toolchain file prepends its own entries to CMAKE_PREFIX_PATH, so do not
++    # rely on its first element; the build scripts pass -DPS_DEPS_PREFIX explicitly.
++    if (NOT PS_DEPS_PREFIX)
++        list(GET CMAKE_PREFIX_PATH 0 PS_DEPS_PREFIX)
++    endif ()
++    # OpenGL ES 3 renderer (PrusaSlicer's Raspberry Pi path) instead of desktop GL.
++    set(SLIC3R_OPENGL_ES ON CACHE BOOL "" FORCE)
++    set(SLIC3R_DESKTOP_INTEGRATION OFF CACHE BOOL "" FORCE)
++    # wx/wxcrtbase.h #warns about bionic's ASCII-only mb/wchar conversion; wx's own UTF-8 converter is used instead.
++    add_compile_options("-Wno-error=#warnings")
++    # The NDK toolchain re-roots every absolute hint under its sysroot; our prefix is passed explicitly.
++    set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE BOTH)
++    set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY BOTH)
++    set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE BOTH)
++endif ()
++
+ # SLIC3R_OPENGL_ES can be enabled only if SLIC3R_GUI is enabled.
+ CMAKE_DEPENDENT_OPTION(SLIC3R_OPENGL_ES "Compile PrusaSlicer targeting OpenGL ES" OFF "SLIC3R_GUI" OFF)
+ 
+@@ -82,6 +99,11 @@ if (APPLE)
+     endif ()
+ endif ()
+ 
++if (ANDROID)
++    # host-run build tools (encoding-check) and tests cannot run from an Android build tree
++    set(IS_CROSS_COMPILE TRUE)
++endif ()
++
+ option(SLIC3R_BUILD_SANDBOXES   "Build development sandboxes" OFF)
+ option(SLIC3R_BUILD_TESTS       "Build unit tests" ON)
+ 
+@@ -471,6 +493,15 @@ endif ()
+ 
+ find_package(PNG REQUIRED)
+ 
++if (ANDROID)
++    # GLES 3 from the NDK; GLEW is replaced by a header shim (android/glew-shim), the GL calls bind to libGLESv3.
++    add_library(OpenGL::GL INTERFACE IMPORTED)
++    target_link_libraries(OpenGL::GL INTERFACE GLESv3 EGL)
++    add_library(GLEW::GLEW INTERFACE IMPORTED)
++    target_include_directories(GLEW::GLEW INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/../android/glew-shim")
++    target_link_libraries(GLEW::GLEW INTERFACE OpenGL::GL)
++    set(OPENGL_LIBRARIES OpenGL::GL)
++else ()
+ set(OpenGL_GL_PREFERENCE "LEGACY")
+ find_package(OpenGL REQUIRED)
+ 
+@@ -481,6 +512,7 @@ if (SLIC3R_STATIC AND NOT SLIC3R_STATIC_EXCLUDE_GLEW)
+ endif()
+ 
+ find_package(GLEW REQUIRED)
++endif ()
+ 
+ # Find the Cereal serialization library
+ find_package(cereal REQUIRED)
+@@ -613,6 +645,11 @@ add_subdirectory(build-utils)
+ add_subdirectory(bundled_deps)
+ # libslic3r, PrusaSlicer GUI and the PrusaSlicer executable.
+ add_subdirectory(src)
++
++option(PS_ANDROID_APP "Android: build the Qt-packaged application (android/app); needs the Qt Android toolchain file" OFF)
++if (ANDROID AND PS_ANDROID_APP)
++    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../android/app" "${CMAKE_BINARY_DIR}/android-app")
++endif ()
+ set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT PrusaSlicer_app_console)
+ 
+ add_dependencies(gettext_make_pot hintsToPot)
+diff --git a/bundled_deps/hidapi/CMakeLists.txt b/bundled_deps/hidapi/CMakeLists.txt
+index d6f76bf..899e4aa 100644
+--- a/bundled_deps/hidapi/CMakeLists.txt
++++ b/bundled_deps/hidapi/CMakeLists.txt
+@@ -4,6 +4,11 @@ if (WIN32)
+     add_library(hidapi STATIC ${HIDAPI_IMPL})
+     target_include_directories(hidapi PUBLIC include)
+ 
++elseif (ANDROID)
++    # no USB HID from an Android app: a stub that reports no devices
++    add_library(hidapi STATIC ${CMAKE_SOURCE_DIR}/../android/stubs/hidapi_stub.c)
++    target_include_directories(hidapi PUBLIC include)
++
+ elseif (APPLE)
+     set(HIDAPI_IMPL mac/hid.c)
+ 
+diff --git a/deps/+CURL/CURL.cmake b/deps/+CURL/CURL.cmake
+index 5fac33d..bb59772 100644
+--- a/deps/+CURL/CURL.cmake
++++ b/deps/+CURL/CURL.cmake
+@@ -35,7 +35,7 @@ elseif (APPLE)
+ 
+     -DCURL_CA_PATH:STRING=none
+   )
+-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
++elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+   set(_curl_platform_flags 
+ 
+     ${_curl_platform_flags}
+@@ -47,6 +47,10 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+     -DCURL_CA_FALLBACK:BOOL=ON
+   )
+ endif ()
++if (ANDROID)
++  # the in_addr_t probe misfires when cross compiling and curl then #defines in_addr_t over bionic's typedef
++  list(APPEND _curl_platform_flags -DHAVE_IN_ADDR_T:BOOL=ON)
++endif ()
+ 
+ set(_patch_command "")
+ if (UNIX AND NOT APPLE)
+@@ -71,7 +75,7 @@ add_cmake_project(CURL
+ )
+ 
+ set(DEP_CURL_DEPENDS ZLIB)
+-if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
++if (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR ANDROID)
+   list(APPEND DEP_CURL_DEPENDS OpenSSL)
+ endif ()
+ 
+diff --git a/deps/+GMP/GMP.cmake b/deps/+GMP/GMP.cmake
+index bea8c89..9669f15 100644
+--- a/deps/+GMP/GMP.cmake
++++ b/deps/+GMP/GMP.cmake
+@@ -58,15 +58,23 @@ else ()
+         # TOOLCHAIN_PREFIX should be defined in the toolchain file
+         set(_cross_compile_arg --host=${TOOLCHAIN_PREFIX})
+     endif ()
++    set(_android_env "")
++    set(_gmp_cxxflags "${_gmp_ccflags}")
++    if (ANDROID)
++        set(_android_env ${ANDROID_AUTOTOOLS_ENV} "CC_FOR_BUILD=cc")
++        # clang refuses the C standard flag on C++ sources (GCC only warns)
++        string(REPLACE "${_stdlib}" "" _gmp_cxxflags "${_gmp_ccflags}")
++        set(_gmp_build_tgt "--build=x86_64-pc-linux-gnu")
++    endif ()
+ 
+     ExternalProject_Add(dep_GMP
+         EXCLUDE_FROM_ALL ON
+-        URL https://gmplib.org/download/gmp/gmp-6.2.1.tar.bz2
++        URL https://ftp.gnu.org/gnu/gmp/gmp-6.2.1.tar.bz2 https://gmplib.org/download/gmp/gmp-6.2.1.tar.bz2
+         URL_HASH SHA256=eae9326beb4158c386e39a356818031bd28f3124cf915f8c5b1dc4c7a36b4d7c
+         DOWNLOAD_DIR ${${PROJECT_NAME}_DEP_DOWNLOAD_DIR}/GMP
+         BUILD_IN_SOURCE ON 
+-        CONFIGURE_COMMAND  env "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_ccflags}" ./configure ${_cross_compile_arg} --enable-shared=no --enable-cxx=yes --enable-static=yes "--prefix=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}" ${_gmp_build_tgt}
+-        BUILD_COMMAND     make -j
+-        INSTALL_COMMAND   make install
++        CONFIGURE_COMMAND  env ${_android_env} "CFLAGS=${_gmp_ccflags}" "CXXFLAGS=${_gmp_cxxflags}" ./configure ${_cross_compile_arg} --enable-shared=no --enable-cxx=yes --enable-static=yes "--prefix=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}" ${_gmp_build_tgt}
++        BUILD_COMMAND     make -j8 MAKEINFO=true
++        INSTALL_COMMAND   make install MAKEINFO=true
+     )
+ endif ()
+diff --git a/deps/+MPFR/MPFR.cmake b/deps/+MPFR/MPFR.cmake
+index 81d8276..7065f86 100644
+--- a/deps/+MPFR/MPFR.cmake
++++ b/deps/+MPFR/MPFR.cmake
+@@ -21,6 +21,14 @@ else ()
+ 
+     message(STATUS "${PROJECT_NAME}_DEP_INSTALL_PREFIX=${${PROJECT_NAME}_DEP_INSTALL_PREFIX}")
+ 
++    set(_mpfr_autoreconf "autoreconf -f -i")
++    set(_android_env "")
++    if (ANDROID)
++        # the release tarball ships a generated configure; the host has no autotools
++        # and its timestamps are lost on extraction: backdate the autotools inputs so make does not try to rerun them
++        set(_mpfr_autoreconf "find . -name configure.ac -o -name Makefile.am -o -name '*.m4' | xargs touch -d 2000-01-01")
++        set(_android_env ${ANDROID_AUTOTOOLS_ENV})
++    endif ()
+     ExternalProject_Add(dep_MPFR
+         EXCLUDE_FROM_ALL ON
+         #URL http://ftp.vim.org/ftp/gnu/mpfr/mpfr-3.1.6.tar.bz2 https://www.mpfr.org/mpfr-3.1.6/mpfr-3.1.6.tar.bz2  # mirrors are allowed
+@@ -30,9 +38,9 @@ else ()
+         DOWNLOAD_DIR ${${PROJECT_NAME}_DEP_DOWNLOAD_DIR}/MPFR
+         BUILD_IN_SOURCE ON
+         CONFIGURE_COMMAND
+-            ${CMAKE_COMMAND} -E env
++            ${CMAKE_COMMAND} -E env ${_android_env}
+                 sh -c
+-                "autoreconf -f -i && \
++                "${_mpfr_autoreconf} && \
+                  CFLAGS='${_gmp_ccflags}' \
+                  CXXFLAGS='${_gmp_ccflags}' \
+                  ./configure ${_cross_compile_arg} \
+@@ -41,8 +49,8 @@ else ()
+                              --enable-static=yes \
+                              --with-gmp='${${PROJECT_NAME}_DEP_INSTALL_PREFIX}' \
+                              ${_gmp_build_tgt}"
+-        BUILD_COMMAND make -j
+-        INSTALL_COMMAND make install
++        BUILD_COMMAND make -j8 MAKEINFO=true
++        INSTALL_COMMAND make install MAKEINFO=true
+     )
+ endif ()
+ 
+diff --git a/deps/+OpenSSL/OpenSSL.cmake b/deps/+OpenSSL/OpenSSL.cmake
+index bcfbab9..c84c5a8 100644
+--- a/deps/+OpenSSL/OpenSSL.cmake
++++ b/deps/+OpenSSL/OpenSSL.cmake
+@@ -17,10 +17,29 @@ if (CMAKE_CROSSCOMPILING)
+     endif ()
+ endif ()
+ 
++set(_openssl_url "https://github.com/openssl/openssl/archive/OpenSSL_1_1_0l.tar.gz")
++set(_openssl_hash SHA256=e2acf0cf58d9bff2b42f2dc0aee79340c8ffe2c5e45d3ca4533dd5d4f5775b1d)
++set(_make_env "")
++if (ANDROID)
++    # 1.1.0 has no android-arm64 / android-x86_64 targets
++    set(_openssl_url "https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-1.1.1w.tar.gz")
++    set(_openssl_hash SHA256=cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8)
++    get_filename_component(_ndk_root "${_ndk_bin}/../../../../.." ABSOLUTE)
++    # the generated Makefile calls the per-API clang wrappers by bare name
++    set(_make_env env "ANDROID_NDK_ROOT=${_ndk_root}" "ANDROID_NDK_HOME=${_ndk_root}" "PATH=${_ndk_bin}:$ENV{PATH}")
++    set(_conf_cmd ${_make_env} ./Configure)
++    set(_cross_comp_prefix_line -D__ANDROID_API__=${_api} -fvisibility=hidden)
++    if (ANDROID_ABI STREQUAL "arm64-v8a")
++        set(_cross_arch android-arm64)
++    else ()
++        set(_cross_arch android-x86_64)
++    endif ()
++endif ()
++
+ ExternalProject_Add(dep_OpenSSL
+     EXCLUDE_FROM_ALL ON
+-    URL "https://github.com/openssl/openssl/archive/OpenSSL_1_1_0l.tar.gz"
+-    URL_HASH SHA256=e2acf0cf58d9bff2b42f2dc0aee79340c8ffe2c5e45d3ca4533dd5d4f5775b1d
++    URL "${_openssl_url}"
++    URL_HASH ${_openssl_hash}
+     DOWNLOAD_DIR ${${PROJECT_NAME}_DEP_DOWNLOAD_DIR}/OpenSSL
+     BUILD_IN_SOURCE ON
+     CONFIGURE_COMMAND ${_conf_cmd} ${_cross_arch}
+@@ -30,6 +49,6 @@ ExternalProject_Add(dep_OpenSSL
+         no-ssl3-method
+         no-dynamic-engine
+         -Wa,--noexecstack
+-    BUILD_COMMAND make depend && make "-j${NPROC}"
+-    INSTALL_COMMAND make install_sw
++    BUILD_COMMAND ${_make_env} make depend && ${_make_env} make "-j${NPROC}"
++    INSTALL_COMMAND ${_make_env} make install_sw
+ )
+\ No newline at end of file
+diff --git a/deps/+PNG/PNG.cmake b/deps/+PNG/PNG.cmake
+index 2c11468..1a39d7a 100644
+--- a/deps/+PNG/PNG.cmake
++++ b/deps/+PNG/PNG.cmake
+@@ -1,5 +1,5 @@
+-if (MSVC OR APPLE)
+-    if (APPLE)
++if (MSVC OR APPLE OR ANDROID)
++    if (APPLE OR ANDROID)
+         # Only disable NEON extension for Apple ARM builds, leave it enabled for Raspberry PI.
+         set(_disable_neon_extension "-DPNG_ARM_NEON:STRING=off")
+     else ()
+diff --git a/deps/+TBB/TBB.cmake b/deps/+TBB/TBB.cmake
+index 95ac76b..078ac67 100644
+--- a/deps/+TBB/TBB.cmake
++++ b/deps/+TBB/TBB.cmake
+@@ -1,7 +1,13 @@
++set(_tbb_patch "")
++if (ANDROID)
++    # oneTBB 2021.5 copies libc++_shared.so from the pre-r23 NDK layout; the file no longer exists there.
++    set(_tbb_patch PATCH_COMMAND sed -i "s/if (.{ANDROID_STL} STREQUAL .c++_shared.)/if (FALSE)/" CMakeLists.txt)
++endif ()
+ add_cmake_project(
+     TBB
+     URL "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2021.5.0.zip"
+     URL_HASH SHA256=83ea786c964a384dd72534f9854b419716f412f9d43c0be88d41874763e7bb47
++    ${_tbb_patch}
+     CMAKE_ARGS          
+         -DTBB_BUILD_SHARED=${BUILD_SHARED_LIBS}
+         -DTBB_TEST=OFF
+diff --git a/deps/CMakeLists.txt b/deps/CMakeLists.txt
+index 04c8c8e..7c20233 100644
+--- a/deps/CMakeLists.txt
++++ b/deps/CMakeLists.txt
+@@ -123,6 +123,12 @@ if (APPLE)
+     )
+ endif ()
+ 
++if (ANDROID)
++    include(deps-android.cmake)
++    # wxWidgets (wxQt fork) is built by configure-wx.sh; GL is GLES from the NDK
++    set(${PROJECT_NAME}_PACKAGE_EXCLUDES "wxWidgets|GLEW|OpenCSG|Catch2" CACHE STRING "" FORCE)
++endif ()
++
+ list_projects(FOUND_PACKAGES ${CMAKE_CURRENT_LIST_DIR})
+ 
+ dep_message(STATUS "Found external package definitions: ${FOUND_PACKAGES}")
+@@ -140,6 +146,10 @@ if (UNIX)
+     endif ()
+ endif ()
+ 
++if (ANDROID)
++    # zlib is built (static) like the rest; OpenGL is GLES/EGL from the NDK sysroot
++    set(SYSTEM_PROVIDED_PACKAGES "")
++endif ()
+ list(APPEND SYSTEM_PROVIDED_PACKAGES ${${PROJECT_NAME}_PLATFORM_PACKAGES})
+ list(REMOVE_DUPLICATES SYSTEM_PROVIDED_PACKAGES)
+ 
+@@ -215,6 +225,10 @@ endforeach()
+ list(REMOVE_DUPLICATES _build_list)
+ dep_message(STATUS "Building dep targets (${CMAKE_BUILD_TYPE}): ${_build_list}")
+ add_custom_target(deps ALL DEPENDS ${_build_list_toplevel})
++if (ANDROID)
++  # normally pulled in by wxWidgets (not built here) but PrusaSlicer needs them directly
++  add_dependencies(deps dep_PNG dep_OpenSSL)
++endif ()
+ 
+ # Support legacy option DEP_DEBUG on MSVC to build debug libraries in the same cmake run as for CMAKE_BUILD_TYPE:
+ if (DEP_DEBUG AND NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+diff --git a/deps/deps-android.cmake b/deps/deps-android.cmake
+new file mode 100644
+index 0000000..86025dc
+--- /dev/null
++++ b/deps/deps-android.cmake
+@@ -0,0 +1,26 @@
++# Android (NDK) dependency bundle. GUI toolkit deps (wxWidgets, GLEW, OpenCSG) are not built here:
++# wxWidgets-on-Qt is built separately (configure-wx.sh) and GL comes from the NDK (GLES3/EGL).
++# TOOLCHAIN_PREFIX and ANDROID_AUTOTOOLS_* are consumed by the autotools-based deps (GMP/MPFR/OpenSSL).
++if (ANDROID_ABI STREQUAL "arm64-v8a")
++    set(TOOLCHAIN_PREFIX aarch64-linux-android)
++elseif (ANDROID_ABI STREQUAL "x86_64")
++    set(TOOLCHAIN_PREFIX x86_64-linux-android)
++else ()
++    message(FATAL_ERROR "Unsupported ANDROID_ABI ${ANDROID_ABI}")
++endif ()
++set(DEP_CMAKE_OPTS "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
++                   "-DANDROID_ABI=${ANDROID_ABI}"
++                   # several deps still declare cmake_minimum_required < 3.5, which CMake 4 rejects
++                   "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
++                   "-DANDROID_PLATFORM=${ANDROID_PLATFORM}"
++                   "-DANDROID_STL=${ANDROID_STL}"
++                   # the NDK toolchain restricts find_* to its sysroot; make our prefix part of it
++                   "-DCMAKE_FIND_ROOT_PATH=${PrusaSlicer_deps_DEP_INSTALL_PREFIX}/../..")
++
++# Bare NDK clang targets the host; the per-API wrappers add --target.
++get_filename_component(_ndk_bin "${CMAKE_C_COMPILER}" DIRECTORY)
++string(REGEX REPLACE "^android-" "" _api "${ANDROID_PLATFORM}")
++set(ANDROID_AUTOTOOLS_CC  "${_ndk_bin}/${TOOLCHAIN_PREFIX}${_api}-clang")
++set(ANDROID_AUTOTOOLS_CXX "${_ndk_bin}/${TOOLCHAIN_PREFIX}${_api}-clang++")
++set(ANDROID_AUTOTOOLS_ENV "CC=${ANDROID_AUTOTOOLS_CC}" "CXX=${ANDROID_AUTOTOOLS_CXX}"
++                          "AR=${CMAKE_AR}" "RANLIB=${CMAKE_RANLIB}" "STRIP=${CMAKE_STRIP}")
+diff --git a/src/CLI/GuiParams.cpp b/src/CLI/GuiParams.cpp
+index f44b916..15c4c58 100644
+--- a/src/CLI/GuiParams.cpp
++++ b/src/CLI/GuiParams.cpp
+@@ -104,7 +104,7 @@ bool init_gui_params(GUI::GUI_InitParams& gui_params, int argc, char** argv, Dat
+ 
+ int start_gui_with_params(GUI::GUI_InitParams& params)
+ {
+-#if !defined(_WIN32) && !defined(__APPLE__)
++#if !defined(_WIN32) && !defined(__APPLE__) && !defined(__ANDROID__)
+     // likely some linux / unix system
+     const char* display = boost::nowide::getenv("DISPLAY");
+     // const char *wayland_display = boost::nowide::getenv("WAYLAND_DISPLAY");
+diff --git a/src/CLI/Setup.cpp b/src/CLI/Setup.cpp
+index 82e03d4..167cf9e 100644
+--- a/src/CLI/Setup.cpp
++++ b/src/CLI/Setup.cpp
+@@ -286,6 +286,9 @@ static bool setup_common()
+     // The resources are packed to 'resources'
+     // Path from Slic3r binary to resources:
+     boost::filesystem::path path_resources = path_to_binary.parent_path() / "resources";
++#elif defined(__ANDROID__)
++    // The resources are bundled as an APK asset and unpacked by prusa_android::bootstrap() (android/app/bootstrap.cpp).
++    boost::filesystem::path path_resources = boost::filesystem::path(std::getenv("PS_RESOURCES_DIR") ? std::getenv("PS_RESOURCES_DIR") : "");
+ #elif defined SLIC3R_FHS
+     // The application is packaged according to the Linux Filesystem Hierarchy Standard
+     // Resources are set to the 'Architecture-independent (shared) data', typically /usr/share or /usr/local/share
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index ae7d061..24bf494 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -41,6 +41,14 @@ if (SLIC3R_GUI)
+     if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+         set (wxWidgets_CONFIG_OPTIONS "--toolkit=gtk${SLIC3R_GTK}")
+     endif ()
++  if (ANDROID)
++    # wxWidgets 3.3 with the Qt toolkit (third_party/wxWidgets, built by configure-wx.sh). Its exported targets
++    # reference Qt6::*. WebView is our backend over android.webkit.WebView.
++    find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets PrintSupport)
++    find_package(wxWidgets 3.3 CONFIG REQUIRED COMPONENTS html adv gl core base webview)
++    find_package(NanoSVG REQUIRED)
++    set(wxWidgets_LIBRARIES wx::html wx::adv wx::gl wx::core wx::base wx::webview)
++  else ()
+     find_package(wxWidgets 3.2 MODULE REQUIRED COMPONENTS base core adv html gl webview)
+ 
+     include(${wxWidgets_USE_FILE})
+@@ -87,11 +95,18 @@ if (SLIC3R_GUI)
+         list(APPEND wxWidgets_LIBRARIES X11 wayland-client wayland-egl EGL)
+     endif ()
+ #    list(REMOVE_ITEM wxWidgets_LIBRARIES oleacc)
++  endif ()
+     message(STATUS "wx libs: ${wxWidgets_LIBRARIES}")
+ 
+     add_subdirectory(slic3r)
+ endif()
+ 
++if (ANDROID)
++    # Android: the libraries only. The application is the Qt/Android shared module defined in android/app
++    # (it compiles PrusaSlicer.cpp + the CLI sources itself).
++    return()
++endif ()
++
+ 
+ # Create a slic3r executable
+ # Process mainfests for various platforms.
+diff --git a/src/PrusaSlicer.cpp b/src/PrusaSlicer.cpp
+index ce287b7..a504b82 100644
+--- a/src/PrusaSlicer.cpp
++++ b/src/PrusaSlicer.cpp
+@@ -82,8 +82,14 @@ extern "C" {
+     }
+ }
+ #else /* _MSC_VER */
++#ifdef __ANDROID__
++namespace prusa_android { void bootstrap(); } // android/app/bootstrap.cpp
++#endif
+ int main(int argc, char **argv)
+ {
++#ifdef __ANDROID__
++    prusa_android::bootstrap();
++#endif
+     return Slic3r::CLI::run(argc, argv);
+ }
+ #endif /* _MSC_VER */
+diff --git a/src/slic3r/CMakeLists.txt b/src/slic3r/CMakeLists.txt
+index 71efa5d..5899313 100644
+--- a/src/slic3r/CMakeLists.txt
++++ b/src/slic3r/CMakeLists.txt
+@@ -479,6 +479,8 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+         OpenSSL::SSL
+         OpenSSL::Crypto
+     )
++elseif (ANDROID)
++    target_link_libraries(libslic3r_gui PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+ elseif (APPLE)
+     target_link_libraries(libslic3r_gui PUBLIC ${DISKARBITRATION_LIBRARY} ${COREWLAN_LIBRARY})
+ endif()
+@@ -496,7 +498,7 @@ endif ()
+ # We need to implement some hacks for wxWidgets and touch the underlying GTK
+ # layer and sub-libraries. This forces us to use the include locations and
+ # link these libraries.
+-if (UNIX AND NOT APPLE)
++if (UNIX AND NOT APPLE AND NOT ANDROID)
+     find_package(GTK${SLIC3R_GTK} REQUIRED)
+     find_package(PkgConfig REQUIRED)
+ 
