@@ -88,6 +88,11 @@ layout of the same GUI.
 | Description texts re-wrap after a value change | ✅ | wx 3.3 Wrap() skipped a new label with the same width |
 | Printables tab | ✅ | mobile site |
 | Workspace mode menu (Expert) | ✅ | menu button stayed highlighted (no wxEVT_MENU_CLOSE in wxQt) |
+| Preview sliders (layers, moves) drag, legend expand/collapse | ✅ | after a fast swipe the last frame came with the next input: extra frame |
+| Export G-code through the Android save dialog | ✅ | |
+| Error / message dialogs | ✅ | no logo on a phone, message box narrower and taller |
+| Notifications and hints | ✅ | 20 line heights wide on a phone (was wider than the 3D view) |
+| Object list columns | ✅ | Name column 15 em on a phone |
 | Dialog titles | ⚠️ | Android shows no window titles (e.g. Save preset has no heading) |
 | Profile download progress dialog | ⚠️ | gauge wider than the screen (cosmetic) |
 | Wide combo boxes / long side texts in settings | ⚠️ | page scrolls sideways a little |

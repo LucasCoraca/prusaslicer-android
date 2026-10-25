@@ -961,7 +961,7 @@ index 3688b4a..abb59af 100644
  
      enum class EItemType : unsigned char
 diff --git a/src/slic3r/GUI/GLCanvas3D.cpp b/src/slic3r/GUI/GLCanvas3D.cpp
-index ae19510..9ce7fd2 100644
+index ae19510..f937ba6 100644
 --- a/src/slic3r/GUI/GLCanvas3D.cpp
 +++ b/src/slic3r/GUI/GLCanvas3D.cpp
 @@ -42,6 +42,7 @@
@@ -1117,7 +1117,20 @@ index ae19510..9ce7fd2 100644
  void GLCanvas3D::on_mouse_wheel(wxMouseEvent& evt)
  {
  #ifdef WIN32
-@@ -4727,7 +4813,7 @@ void GLCanvas3D::update_ui_from_settings()
+@@ -3733,6 +3819,12 @@ void GLCanvas3D::on_mouse(wxMouseEvent& evt)
+         m_mouse.position = evt.Leaving() ? Vec2d(-1.0, -1.0) : pos.cast<double>();
+         m_tooltip.set_in_imgui(true);
+         render();
++#ifdef __ANDROID__
++        // what a slider or button changed shows in a following frame, which the desktop gets from the next mouse
++        // move: a lifted finger sends none
++        if (evt.LeftUp() || evt.Dragging())
++            schedule_extra_frame(100);
++#endif
+ #ifdef SLIC3R_DEBUG_MOUSE_EVENTS
+         printf((format_mouse_event_debug_message(evt) + " - Consumed by ImGUI\n").c_str());
+ #endif /* SLIC3R_DEBUG_MOUSE_EVENTS */
+@@ -4727,7 +4819,7 @@ void GLCanvas3D::update_ui_from_settings()
  #endif // ENABLE_RETINA_GL
  
      if (wxGetApp().is_editor())
@@ -1126,7 +1139,7 @@ index ae19510..9ce7fd2 100644
  }
  
  std::vector<GLCanvas3D::WipeTowerInfo> GLCanvas3D::get_wipe_tower_infos() const
-@@ -5043,10 +5129,10 @@ void GLCanvas3D::_render_thumbnail_framebuffer(ThumbnailData& thumbnail_data, un
+@@ -5043,10 +5135,10 @@ void GLCanvas3D::_render_thumbnail_framebuffer(ThumbnailData& thumbnail_data, un
      if (!thumbnail_data.is_valid())
          return;
  
@@ -1139,7 +1152,7 @@ index ae19510..9ce7fd2 100644
  
      GLint max_samples;
      glsafe(::glGetIntegerv(GL_MAX_SAMPLES, &max_samples));
-@@ -5121,7 +5207,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer(ThumbnailData& thumbnail_data, un
+@@ -5121,7 +5213,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer(ThumbnailData& thumbnail_data, un
              glsafe(::glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, (void*)thumbnail_data.pixels.data()));
      }
  
@@ -1148,7 +1161,7 @@ index ae19510..9ce7fd2 100644
      glsafe(::glDeleteRenderbuffers(1, &render_depth));
      if (render_tex_buffer != 0)
          glsafe(::glDeleteRenderbuffers(1, &render_tex_buffer));
-@@ -5130,7 +5216,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer(ThumbnailData& thumbnail_data, un
+@@ -5130,7 +5222,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer(ThumbnailData& thumbnail_data, un
      glsafe(::glDeleteFramebuffers(1, &render_fbo));
  
      if (!multisample)
@@ -1157,7 +1170,7 @@ index ae19510..9ce7fd2 100644
  }
  
  void GLCanvas3D::_render_thumbnail_framebuffer_ext(ThumbnailData& thumbnail_data, unsigned int w, unsigned int h, const ThumbnailsParams& thumbnail_params, const GLVolumeCollection& volumes, Camera::EType camera_type)
-@@ -5139,10 +5225,10 @@ void GLCanvas3D::_render_thumbnail_framebuffer_ext(ThumbnailData& thumbnail_data
+@@ -5139,10 +5231,10 @@ void GLCanvas3D::_render_thumbnail_framebuffer_ext(ThumbnailData& thumbnail_data
      if (!thumbnail_data.is_valid())
          return;
  
@@ -1170,7 +1183,7 @@ index ae19510..9ce7fd2 100644
  
      GLint max_samples;
      glsafe(::glGetIntegerv(GL_MAX_SAMPLES_EXT, &max_samples));
-@@ -5217,7 +5303,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer_ext(ThumbnailData& thumbnail_data
+@@ -5217,7 +5309,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer_ext(ThumbnailData& thumbnail_data
              glsafe(::glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, (void*)thumbnail_data.pixels.data()));
      }
  
@@ -1179,7 +1192,7 @@ index ae19510..9ce7fd2 100644
      glsafe(::glDeleteRenderbuffersEXT(1, &render_depth));
      if (render_tex_buffer != 0)
          glsafe(::glDeleteRenderbuffersEXT(1, &render_tex_buffer));
-@@ -5226,7 +5312,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer_ext(ThumbnailData& thumbnail_data
+@@ -5226,7 +5318,7 @@ void GLCanvas3D::_render_thumbnail_framebuffer_ext(ThumbnailData& thumbnail_data
      glsafe(::glDeleteFramebuffersEXT(1, &render_fbo));
  
      if (!multisample)
@@ -1188,7 +1201,7 @@ index ae19510..9ce7fd2 100644
  }
  
  void GLCanvas3D::_render_thumbnail_legacy(ThumbnailData& thumbnail_data, unsigned int w, unsigned int h, const ThumbnailsParams& thumbnail_params, const GLVolumeCollection& volumes, Camera::EType camera_type)
-@@ -5944,7 +6030,7 @@ void GLCanvas3D::_rectangular_selection_picking_pass()
+@@ -5944,7 +6036,7 @@ void GLCanvas3D::_rectangular_selection_picking_pass()
  
          if (m_multisample_allowed)
          	// This flag is often ignored by NVIDIA drivers if rendering into a screen buffer.
@@ -1197,7 +1210,7 @@ index ae19510..9ce7fd2 100644
  
          glsafe(::glDisable(GL_BLEND));
          glsafe(::glEnable(GL_DEPTH_TEST));
-@@ -5987,7 +6073,7 @@ void GLCanvas3D::_rectangular_selection_picking_pass()
+@@ -5987,7 +6079,7 @@ void GLCanvas3D::_rectangular_selection_picking_pass()
          _render_bed_for_picking(camera->get_view_matrix(), camera->get_projection_matrix(), !camera->is_looking_downward());
  
          if (m_multisample_allowed)
@@ -1206,7 +1219,7 @@ index ae19510..9ce7fd2 100644
  
          const size_t px_count = width * height;
  
-@@ -6037,14 +6123,14 @@ void GLCanvas3D::_rectangular_selection_picking_pass()
+@@ -6037,14 +6129,14 @@ void GLCanvas3D::_rectangular_selection_picking_pass()
                  main_camera.apply_viewport();
  
              if (framebuffers_type == OpenGLManager::EFramebufferType::Arb) {
@@ -1298,6 +1311,45 @@ index 8e65dcb..a9f815e 100644
  #if defined(__linux__) && defined(SLIC3R_DESKTOP_INTEGRATION) 
          //if (DesktopIntegrationDialog::integration_possible())
          local_menu->Append(config_id_base + ConfigMenuDesktopIntegration, _L("Desktop Integration"), _L("Desktop Integration"));    
+diff --git a/src/slic3r/GUI/GUI_ObjectList.cpp b/src/slic3r/GUI/GUI_ObjectList.cpp
+index 3aa5a46..7f22d39 100644
+--- a/src/slic3r/GUI/GUI_ObjectList.cpp
++++ b/src/slic3r/GUI/GUI_ObjectList.cpp
+@@ -12,6 +12,7 @@
+ #include "libslic3r/FileReader.hpp"
+ #include "libslic3r/Feature/FullSpectrum/VirtualExtruder.hpp"
+ #include "GUI_ObjectList.hpp"
++#include "PhoneLayout.hpp"
+ #include "GUI_Factories.hpp"
+ #include "GUI_ObjectManipulation.hpp"
+ #include "GUI_ObjectLayers.hpp"
+@@ -354,7 +355,7 @@ void ObjectList::create_objects_ctrl()
+         return m_objects_model->GetItemType(GetSelection()) & (itVolume | itObject);
+     });
+     AppendColumn(new wxDataViewColumn(_L("Name"), bmp_text_renderer,
+-        colName, 20*em, wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE));
++        colName, (is_phone_layout() ? 15 : 20)*em, wxALIGN_LEFT, wxDATAVIEW_COL_RESIZABLE));
+ 
+     // column PrintableProperty (Icon) of the view control:
+     AppendBitmapColumn(" ", colPrint, wxDATAVIEW_CELL_INERT, 3*em,
+@@ -379,7 +380,7 @@ void ObjectList::create_objects_ctrl()
+     // Therefore, force set column width.
+     if (wxOSX)
+     {
+-        GetColumn(colName)->SetWidth(20*em);
++        GetColumn(colName)->SetWidth((is_phone_layout() ? 15 : 20)*em); // phone: all columns fit
+         GetColumn(colPrint)->SetWidth(3*em);
+         GetColumn(colExtruder)->SetWidth(8*em);
+         GetColumn(colEditing) ->SetWidth(7*em);
+@@ -4788,7 +4789,7 @@ void ObjectList::msw_rescale()
+ 
+     const int em = wxGetApp().em_unit();
+ 
+-    GetColumn(colName    )->SetWidth(20 * em);
++    GetColumn(colName    )->SetWidth((is_phone_layout() ? 15 : 20) * em);
+     GetColumn(colPrint   )->SetWidth( 3 * em);
+     GetColumn(colExtruder)->SetWidth( 8 * em);
+     GetColumn(colEditing )->SetWidth( 3 * em);
 diff --git a/src/slic3r/GUI/Gizmos/GLGizmoMeasure.cpp b/src/slic3r/GUI/Gizmos/GLGizmoMeasure.cpp
 index 48b952a..68b6fc8 100644
 --- a/src/slic3r/GUI/Gizmos/GLGizmoMeasure.cpp
@@ -1313,6 +1365,27 @@ index 48b952a..68b6fc8 100644
              shader->set_uniform("width", 1.0f);
              shader->set_uniform("gap_size", 0.0f);
  #if !SLIC3R_OPENGL_ES
+diff --git a/src/slic3r/GUI/HintNotification.cpp b/src/slic3r/GUI/HintNotification.cpp
+index c3edede..6e92594 100644
+--- a/src/slic3r/GUI/HintNotification.cpp
++++ b/src/slic3r/GUI/HintNotification.cpp
+@@ -4,6 +4,7 @@
+ ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+ ///|/
+ #include "HintNotification.hpp"
++#include "PhoneLayout.hpp"
+ #include "ImGuiPureWrap.hpp"
+ #include "format.hpp"
+ #include "I18N.hpp"
+@@ -584,7 +585,7 @@ void NotificationManager::HintNotification::count_spaces()
+ 	else 
+ 		m_window_width_offset = m_left_indentation + m_line_height * 5.5f;
+ 
+-	m_window_width = m_line_height * 25;
++	m_window_width = m_line_height * (is_phone_layout() ? 20 : 25); // phone: fits the narrow 3D view
+ }
+ 
+ void NotificationManager::HintNotification::count_lines()
 diff --git a/src/slic3r/GUI/InstanceCheck.cpp b/src/slic3r/GUI/InstanceCheck.cpp
 index aec1db8..2e6b896 100644
 --- a/src/slic3r/GUI/InstanceCheck.cpp
@@ -1412,6 +1485,88 @@ index faa9db8..6e2eeb9 100644
      // append menus for Menu button from TopBar
  
      m_bar_menus.AppendMenuItem(fileMenu, _L("&File"));
+diff --git a/src/slic3r/GUI/MsgDialog.cpp b/src/slic3r/GUI/MsgDialog.cpp
+index 936287c..45f3b44 100644
+--- a/src/slic3r/GUI/MsgDialog.cpp
++++ b/src/slic3r/GUI/MsgDialog.cpp
+@@ -3,6 +3,7 @@
+ ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+ ///|/
+ #include "MsgDialog.hpp"
++#include "PhoneLayout.hpp"
+ 
+ #include <wx/settings.h>
+ #include <wx/sizer.h>
+@@ -62,6 +63,9 @@ MsgDialog::MsgDialog(wxWindow *parent, const wxString &title, const wxString &he
+ 	logo = new wxStaticBitmap(this, wxID_ANY, bitmap.IsOk() ? bitmap : wxNullBitmap);
+ 
+ 	topsizer->Add(logo, 0, wxALL, BORDER);
++	// phone layout: the logo would take a third of the screen width
++	if (is_phone_layout())
++		logo->Hide();
+ 	topsizer->Add(rightsizer, 1, wxTOP | wxBOTTOM | wxRIGHT | wxEXPAND, BORDER);
+ 
+     main_sizer->Add(topsizer, 1, wxEXPAND);
+@@ -190,6 +194,11 @@ static void add_msg_content(MsgDialog* parent, wxBoxSizer* content_sizer, const
+         page_size = wxSize(std::min(msg_sz.GetX() + 2 * em, 68 * em),
+                            std::min(msg_sz.GetY() + 2 * em, 68 * em));
+     }
++    if (const int phone_width = wxGetDisplaySize().x - 6 * em; is_phone_layout() && page_size.x > phone_width) {
++        // the text wraps to more lines
++        page_size.y = std::min((page_size.y - 2 * em) * (page_size.x + phone_width - 1) / phone_width + 2 * em, 40 * em);
++        page_size.x = phone_width;
++    }
+     html->SetMinSize(page_size);
+ 
+     std::string msg_escaped = xml_escape(into_u8(content.msg), content.is_marked_msg || content.on_link_clicked);
+diff --git a/src/slic3r/GUI/NotificationManager.cpp b/src/slic3r/GUI/NotificationManager.cpp
+index 08650a9..d3b6972 100644
+--- a/src/slic3r/GUI/NotificationManager.cpp
++++ b/src/slic3r/GUI/NotificationManager.cpp
+@@ -3,6 +3,7 @@
+ ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+ ///|/
+ #include "NotificationManager.hpp"
++#include "PhoneLayout.hpp"
+ 
+ #include "HintNotification.hpp"
+ #include "GUI.hpp"
+@@ -277,7 +278,7 @@ void NotificationManager::PopNotification::count_spaces()
+ 		m_left_indentation = picture_width + m_line_height / 2;
+ 	}
+ 	m_window_width_offset = m_left_indentation + m_line_height * 3.f;
+-	m_window_width = m_line_height * 25;
++	m_window_width = m_line_height * (is_phone_layout() ? 20 : 25); // phone: fits the narrow 3D view
+ }
+  
+ void NotificationManager::PopNotification::count_lines()
+@@ -753,7 +754,7 @@ void NotificationManager::ExportFinishedNotification::count_spaces()
+ 	}
+ 	//TODO count this properly
+ 	m_window_width_offset = m_left_indentation + m_line_height * (m_to_removable ? 6.f : 3.f);
+-	m_window_width = m_line_height * 25;
++	m_window_width = m_line_height * (is_phone_layout() ? 20 : 25); // phone: fits the narrow 3D view
+ }
+ 
+ void NotificationManager::ExportFinishedNotification::render_text(const float win_size_x, const float win_size_y, const float win_pos_x, const float win_pos_y)
+@@ -1375,7 +1376,7 @@ void NotificationManager::PrintHostUploadNotification::count_spaces()
+ 		m_left_indentation = picture_width + m_line_height / 2;
+ 	}
+ 	m_window_width_offset = m_line_height * 6;
+-	m_window_width = m_line_height * 25;
++	m_window_width = m_line_height * (is_phone_layout() ? 20 : 25); // phone: fits the narrow 3D view
+ }
+ bool NotificationManager::PrintHostUploadNotification::push_background_color()
+ {
+@@ -1707,7 +1708,7 @@ void NotificationManager::UpdatedItemsInfoNotification::count_spaces()
+ 	m_left_indentation = picture_width + m_line_height / 2;
+ 
+ 	m_window_width_offset = m_left_indentation + m_line_height * 3.f;
+-	m_window_width = m_line_height * 25;
++	m_window_width = m_line_height * (is_phone_layout() ? 20 : 25); // phone: fits the narrow 3D view
+ }
+ void NotificationManager::UpdatedItemsInfoNotification::add_type(InfoItemType type)
+ {
 diff --git a/src/slic3r/GUI/OG_CustomCtrl.cpp b/src/slic3r/GUI/OG_CustomCtrl.cpp
 index e5ad433..21dc618 100644
 --- a/src/slic3r/GUI/OG_CustomCtrl.cpp
