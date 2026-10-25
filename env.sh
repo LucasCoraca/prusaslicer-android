@@ -12,7 +12,7 @@ QT_ANDROID_ROOT=${QT_ANDROID_ROOT:-$HOME/Android/fcdeps}
 QT_HOST_PATH=${QT_HOST_PATH:-$QT_ANDROID_ROOT/qt-host}
 export JAVA_HOME=${JAVA_HOME:-$HOME/Android/jdk17}
 PS_KEYSTORE=${PS_KEYSTORE:-$R/hosttools/debug.keystore}
-JOBS=${JOBS:-4}  # shared machine: other agents compile here too
+JOBS=${JOBS:-2}  # shared machine: other agents compile here too (the machine crashed at 4 jobs + emulator)
 # private host tools: cmake >= 3.28 and ninja in a Python venv (pip install cmake ninja), GNU m4 for the autotools deps
 export PATH=$R/hosttools/pyenv/bin:$R/hosttools/bin:$JAVA_HOME/bin:$PATH
 
