@@ -12,6 +12,11 @@
 #include <QtWidgets/QListWidget>
 #include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QWidget>
+#include <QtWidgets/QApplication>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QWindow>
+#include <QtGui/QPixmap>
+#include <QtGui/QPalette>
 #include <QtGui/QFontMetrics>
 
 #include <android/log.h>
@@ -98,7 +103,41 @@ public:
                                 q->metaObject()->className(), c->metaObject()->className(), c->objectName().toUtf8().constData(),
                                 g.x(), g.y(), g.width(), g.height(), c->isVisible() ? "vis" : "hid");
                         }
+            for (QWindow *w : QGuiApplication::allWindows()) {
+                const QRect g = w->geometry();
+                __android_log_print(ANDROID_LOG_INFO, "prusa-tree", "QWINDOW %s '%s' %d,%d %dx%d visible=%d exposed=%d flags=%x opacity=%.2f transient=%s",
+                    w->metaObject()->className(), w->objectName().toUtf8().constData(), g.x(), g.y(), g.width(), g.height(),
+                    int(w->isVisible()), int(w->isExposed()), unsigned(w->flags()), w->opacity(),
+                    w->transientParent() ? w->transientParent()->objectName().toUtf8().constData() : "-");
+            }
+            for (QWidget *tl : QApplication::topLevelWidgets())
+                if (tl->isVisible() && tl->windowType() == Qt::Popup) {
+                    tl->grab().save(QString::fromStdString(std::string(home) + "/popup.png"));
+                    __android_log_print(ANDROID_LOG_INFO, "prusa-tree", "POPUP attrs translucent=%d nosysbg=%d opaquepaint=%d autofill=%d opacity=%.2f updates=%d stylesheet='%s' mask=%d",
+                        int(tl->testAttribute(Qt::WA_TranslucentBackground)), int(tl->testAttribute(Qt::WA_NoSystemBackground)),
+                        int(tl->testAttribute(Qt::WA_OpaquePaintEvent)), int(tl->autoFillBackground()), tl->windowOpacity(),
+                        int(tl->updatesEnabled()), tl->styleSheet().left(60).toUtf8().constData(), int(!tl->mask().isEmpty()));
+                }
+            for (QWidget *tl : QApplication::topLevelWidgets())
+                if (tl->isVisible())
+                    __android_log_print(ANDROID_LOG_INFO, "prusa-tree", "QTOPLEVEL %s %d,%d %dx%d type=%x", tl->metaObject()->className(),
+                        tl->x(), tl->y(), tl->width(), tl->height(), unsigned(tl->windowType()));
             __android_log_write(ANDROID_LOG_INFO, "prusa-tree", "END");
+        }
+        const std::string popuptest = std::string(home) + "/popuptest";
+        if (std::FILE *f = std::fopen(popuptest.c_str(), "r")) {
+            std::fclose(f);
+            std::remove(popuptest.c_str());
+            // a plain Qt popup, created as one: is it composited at all?
+            QWidget *top = wxTheApp->GetTopWindow() ? wxTheApp->GetTopWindow()->GetHandle() : nullptr;
+            QWidget *w = new QWidget(top, Qt::Popup);
+            w->setAutoFillBackground(true);
+            QPalette pal = w->palette();
+            pal.setColor(QPalette::Window, Qt::red);
+            w->setPalette(pal);
+            w->setGeometry(700, 300, 200, 150);
+            w->show();
+            __android_log_write(ANDROID_LOG_INFO, "prusa-tree", "POPUPTEST shown");
         }
         const std::string repaint = std::string(home) + "/repaint";
         if (std::FILE *f = std::fopen(repaint.c_str(), "r")) {

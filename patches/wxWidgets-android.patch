@@ -320,6 +320,19 @@ index 847316d..97474c9 100644
  
  class QOpenGLWidget;
  class QOpenGLContext;
+diff --git a/include/wx/qt/popupwin.h b/include/wx/qt/popupwin.h
+index e335b99..bf8b6cf 100644
+--- a/include/wx/qt/popupwin.h
++++ b/include/wx/qt/popupwin.h
+@@ -17,6 +17,8 @@ public:
+ 
+     bool Create(wxWindow *parent, int flags = wxBORDER_NONE);
+ 
++    virtual bool Show(bool show = true) override;
++
+ protected:
+ 
+ private:
 diff --git a/include/wx/qt/private/winevent.h b/include/wx/qt/private/winevent.h
 index 8933a1a..b6bc935 100644
 --- a/include/wx/qt/private/winevent.h
@@ -1216,7 +1229,7 @@ index 94b0718..3f9c1f9 100644
  
  wxAnyButton::State wxAnyButton::QtGetCurrentState() const
 diff --git a/src/qt/app.cpp b/src/qt/app.cpp
-index 9521282..59ed8ff 100644
+index 9521282..5896fdf 100644
 --- a/src/qt/app.cpp
 +++ b/src/qt/app.cpp
 @@ -14,7 +14,72 @@
@@ -1234,7 +1247,7 @@ index 9521282..59ed8ff 100644
 +#ifdef __ANDROID__
 +// Qt's Android plugin (6.8) maps pointer events for every top-level window except the one at the origin
 +// (menus, combo/dropdown popups, dialogs) to a position that is off by the window's position divided by
-+// the device pixel ratio. The main window sits at (0, 0), so only secondary windows are affected. Undo the
++// the device pixel ratio (verified at DPR 2 and DPR 1). The main window sits at (0, 0), so only secondary windows are affected. Undo the
 +// offset on the window-level mouse events, before Qt dispatches them to the widgets inside.
 +class wxQtAndroidSecondaryWindowInputFix : public QObject
 +{
@@ -2207,6 +2220,33 @@ index 4667e3f..0cfdcc4 100644
  }
  
  void wxQtListWidget::doubleClicked( const QModelIndex &index )
+diff --git a/src/qt/popupwin.cpp b/src/qt/popupwin.cpp
+index 734a7bb..913c16c 100644
+--- a/src/qt/popupwin.cpp
++++ b/src/qt/popupwin.cpp
+@@ -33,6 +33,22 @@ wxQtPopupWindow::wxQtPopupWindow(wxWindow* parent, wxPopupWindow* handler)
+ {
+ }
+ 
++bool wxPopupWindow::Show(bool show)
++{
++    if ( !wxPopupWindowBase::Show(show) )
++        return false;
++    if ( show && GetHandle() )
++    {
++        // A popup created while its parent was frozen (Freeze() = setUpdatesEnabled(false)) inherits the disabled
++        // updates, and Qt does not re-enable them for top-level children when the parent thaws: it never painted.
++        if ( !IsFrozen() && !GetHandle()->updatesEnabled() )
++            GetHandle()->setUpdatesEnabled(true);
++        // above every other top-level window of the app (they all share one surface on Android)
++        GetHandle()->raise();
++    }
++    return true;
++}
++
+ wxPopupWindow::wxPopupWindow(wxWindow *parent, int flags)
+ {
+    Create(parent, flags);
 diff --git a/src/qt/secretstore_android.cpp b/src/qt/secretstore_android.cpp
 new file mode 100644
 index 0000000..10bac8f
@@ -2335,7 +2375,7 @@ index 0279f3a..bdf4eb1 100644
  {
      GetQLabel()->setText( wxQtConvertString( label ) );
 diff --git a/src/qt/toplevel.cpp b/src/qt/toplevel.cpp
-index 2c3fed1..e3454db 100644
+index 2c3fed1..411a4a6 100644
 --- a/src/qt/toplevel.cpp
 +++ b/src/qt/toplevel.cpp
 @@ -10,8 +10,26 @@
@@ -2365,7 +2405,7 @@ index 2c3fed1..e3454db 100644
  
  wxTopLevelWindowQt::wxTopLevelWindowQt(wxWindow *parent,
             wxWindowID winId,
-@@ -48,12 +66,38 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
+@@ -48,46 +66,78 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
  
  bool wxTopLevelWindowQt::Show(bool show)
  {
@@ -2382,6 +2422,10 @@ index 2c3fed1..e3454db 100644
      if ( !wxTopLevelWindowBase::Show(show) )
          return false;
  
++    // same as for popups: updates disabled by a parent frozen while this window was created are never re-enabled
++    if ( show && !IsFrozen() && !GetHandle()->updatesEnabled() )
++        GetHandle()->setUpdatesEnabled(true);
++
      if ( show && !m_qtWindow->isActiveWindow() )
          m_qtWindow->activateWindow();
  
@@ -2404,7 +2448,60 @@ index 2c3fed1..e3454db 100644
      return true;
  }
  
-@@ -245,6 +289,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+-void wxTopLevelWindowQt::Maximize(bool maximize)
++// QWidget::showMaximized() & co. also show the window. A hidden wx window must stay hidden and only remember the
++// state (PrusaSlicer maximizes its hidden settings frame while restoring its geometry: an invisible full-screen
++// window then covered every popup).
++static void wxQtSetWindowState(QWidget *widget, Qt::WindowStates state)
+ {
+-    QWidget *widget = GetHandle();
+-
+-    if ( maximize )
++    if ( widget->isVisible() )
+     {
+-        widget->showMaximized();
++        if ( state & Qt::WindowMaximized )
++            widget->showMaximized();
++        else if ( state & Qt::WindowMinimized )
++            widget->showMinimized();
++        else
++            widget->showNormal();
+     }
+     else
+     {
+-        widget->showNormal();
++        widget->setWindowState((widget->windowState() & ~(Qt::WindowMaximized | Qt::WindowMinimized)) | state);
+     }
+ }
+ 
++void wxTopLevelWindowQt::Maximize(bool maximize)
++{
++    wxQtSetWindowState(GetHandle(), maximize ? Qt::WindowMaximized : Qt::WindowNoState);
++}
++
+ void wxTopLevelWindowQt::Restore()
+ {
+-    GetHandle()->showNormal();
++    wxQtSetWindowState(GetHandle(), Qt::WindowNoState);
+ }
+ 
+ void wxTopLevelWindowQt::Iconize(bool iconize )
+ {
+-    QWidget *widget = GetHandle();
+-
+-    if ( iconize )
+-    {
+-        widget->showMinimized();
+-    }
+-    else
+-    {
+-        widget->showNormal();
+-    }
++    wxQtSetWindowState(GetHandle(), iconize ? Qt::WindowMinimized : Qt::WindowNoState);
+ }
+ 
+ bool wxTopLevelWindowQt::IsMaximized() const
+@@ -245,6 +295,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
      minW = wxMax(0, minW);
      minH = wxMax(0, minH);
  
@@ -2419,7 +2516,7 @@ index 2c3fed1..e3454db 100644
      incW = wxMax(0, incW);
      incH = wxMax(0, incH);
  
-@@ -254,3 +306,35 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -254,3 +312,35 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
  
      wxTopLevelWindowBase::DoSetSizeHints(minW, minH, maxW, maxH, incW, incH);
  }

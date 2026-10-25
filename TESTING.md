@@ -47,6 +47,12 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Print Settings tab: page tree | ✅ | was empty: wxQt SetIndent() set the column count |
 | Memory | ⚠️ | PrusaSlicer needs ~1.2 GB resident, 2.7 GB peak while loading the Prusa profiles (same as desktop); 4 GB phones may be tight |
 
+| Settings pages render (DPR 1 tablet AVD), unit labels | ✅ | crash on empty bitmap in wxQt DrawBitmap; units slid under fields |
+| Edit a value (spin), modified marker, reset to system value | ✅ | |
+| Switch settings pages | ✅ | |
+| Drop-down lists (all PrusaSlicer combo boxes) open and select | ✅ | three bugs: hidden maximized frame on top (wxQt Maximize showed it), popups inherited disabled updates from a frozen parent, DropDown lost its pick when hidden |
+
 ## Test environment note
-The emulator with PrusaSlicer running costs ~12 GB of host RAM (GPU emulation at 2560x1600). On the shared build machine
-start it only with that much headroom (`free -m`); start-emulator.sh stops it if qemu grows past PS_EMU_MAX_MB.
+Tests now run on `pstab` (1280x800, DPR 1, made by avdmanager into avd/): ~2.6 GB of host RAM with PrusaSlicer running.
+The first AVD (2560x1600 DPR 2) cost ~12 GB (GPU emulation) and crashed the shared build machine; start-emulator.sh stops
+the emulator if qemu grows past PS_EMU_MAX_MB.
