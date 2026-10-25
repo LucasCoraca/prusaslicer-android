@@ -1229,10 +1229,10 @@ index 94b0718..3f9c1f9 100644
  
  wxAnyButton::State wxAnyButton::QtGetCurrentState() const
 diff --git a/src/qt/app.cpp b/src/qt/app.cpp
-index 9521282..bd466a2 100644
+index 9521282..58ffd19 100644
 --- a/src/qt/app.cpp
 +++ b/src/qt/app.cpp
-@@ -14,7 +14,123 @@
+@@ -14,7 +14,146 @@
  #include "wx/qt/private/utils.h"
  #include "wx/qt/private/converter.h"
  #include <QtCore/QStringList>
@@ -1242,6 +1242,7 @@ index 9521282..bd466a2 100644
 +#include <QtGui/QMouseEvent>
 +#include <QtGui/QTouchEvent>
 +#include <QtGui/QWindow>
++#include <QtWidgets/QComboBox>
 +#include <QtCore/QPointer>
 +#include <QtGui/QGuiApplication>
 +#include <QtGui/QInputMethod>
@@ -1305,6 +1306,28 @@ index 9521282..bd466a2 100644
 +    }
 +};
 +
++// A native combo box opens its list on the press; with a finger the release then lands inside the list that just
++// opened over the box, re-selecting the current item and closing it again: a tap never opened it. Open on release.
++class wxQtAndroidComboTapFix : public QObject
++{
++protected:
++    bool eventFilter(QObject* obj, QEvent* event) override
++    {
++        if ( event->type() != QEvent::MouseButtonPress && event->type() != QEvent::MouseButtonRelease
++             && event->type() != QEvent::MouseButtonDblClick )
++            return false;
++        QComboBox* const combo = qobject_cast<QComboBox*>(obj);
++        if ( !combo || !combo->isEnabled() || combo->isEditable() )
++            return false;
++        auto* const me = static_cast<QMouseEvent*>(event);
++        if ( me->button() != Qt::LeftButton )
++            return false;
++        if ( event->type() == QEvent::MouseButtonRelease && combo->rect().contains(me->position().toPoint()) )
++            combo->showPopup();
++        return true; // the press (and double click) would open it too early
++    }
++};
++
 +// The soft keyboard covers the lower part of the screen; Qt resizes nothing for top-level dialogs, so a text field
 +// in a dialog (and its OK button) could end up under it. Move the dialog of the focused widget up while the
 +// keyboard is shown, back when it hides.
@@ -1356,7 +1379,7 @@ index 9521282..bd466a2 100644
  #include <QSurfaceFormat>
  
  #include <algorithm>
-@@ -38,9 +154,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -38,9 +177,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
  
      wxConvCurrent = &wxConvUTF8;
  
@@ -1375,7 +1398,7 @@ index 9521282..bd466a2 100644
      QSurfaceFormat::setDefaultFormat(format);
  
      const int argcA = argc_;
-@@ -62,7 +186,21 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -62,7 +209,22 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
      // of the QApplication object. In addition, argc must be greater than zero and argv must
      // contain at least one valid character string.
  
@@ -1393,6 +1416,7 @@ index 9521282..bd466a2 100644
 +    m_qtApplication->installEventFilter(new wxQtAndroidSecondaryWindowInputFix);
 +    m_qtApplication->installEventFilter(new wxQtAndroidSecondaryWindowPaintFix);
 +    new wxQtAndroidKeyboardAvoider; // lives as long as the app
++    m_qtApplication->installEventFilter(new wxQtAndroidComboTapFix);
 +#endif
  
      if ( m_qtApplication->platformName() == "xcb" )
@@ -2427,7 +2451,7 @@ index 0279f3a..bdf4eb1 100644
  {
      GetQLabel()->setText( wxQtConvertString( label ) );
 diff --git a/src/qt/toplevel.cpp b/src/qt/toplevel.cpp
-index 2c3fed1..b1f86d0 100644
+index 2c3fed1..495de6e 100644
 --- a/src/qt/toplevel.cpp
 +++ b/src/qt/toplevel.cpp
 @@ -10,8 +10,26 @@
@@ -2457,7 +2481,7 @@ index 2c3fed1..b1f86d0 100644
  
  wxTopLevelWindowQt::wxTopLevelWindowQt(wxWindow *parent,
             wxWindowID winId,
-@@ -48,46 +66,87 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
+@@ -48,46 +66,89 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
  
  bool wxTopLevelWindowQt::Show(bool show)
  {
@@ -2466,12 +2490,14 @@ index 2c3fed1..b1f86d0 100644
 +    if ( show )
 +    {
 +        wxRect rect = GetRect();
-+        // No window manager places new windows on Android: a dialog nobody positioned sits at the screen origin.
-+        // Centre it, as a desktop window manager would.
++        // No window manager places windows on Android: a dialog nobody positioned sits at the screen origin, and one
++        // centred before its final Fit() keeps the top-left of a tiny window. Centre dialogs when first shown, as a
++        // desktop window manager would.
 +        const QRect area = wxQtAvailableScreenArea();
-+        if ( wxDynamicCast(this, wxDialog) && rect.GetPosition() == wxPoint(area.x(), area.y())
++        if ( wxDynamicCast(this, wxDialog) && !GetHandle()->property("wxShownOnce").toBool()
 +             && rect.width < area.width() && rect.height < area.height() )
 +        {
++            GetHandle()->setProperty("wxShownOnce", true);
 +            rect.x = area.x() + (area.width() - rect.width) / 2;
 +            rect.y = area.y() + (area.height() - rect.height) / 2;
 +        }
@@ -2562,7 +2588,7 @@ index 2c3fed1..b1f86d0 100644
  }
  
  bool wxTopLevelWindowQt::IsMaximized() const
-@@ -245,6 +304,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -245,6 +306,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
      minW = wxMax(0, minW);
      minH = wxMax(0, minH);
  
@@ -2577,7 +2603,7 @@ index 2c3fed1..b1f86d0 100644
      incW = wxMax(0, incW);
      incH = wxMax(0, incH);
  
-@@ -254,3 +321,48 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -254,3 +323,48 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
  
      wxTopLevelWindowBase::DoSetSizeHints(minW, minH, maxW, maxH, incW, incH);
  }

@@ -52,8 +52,10 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Switch settings pages | ✅ | |
 | Drop-down lists (all PrusaSlicer combo boxes) open and select | ✅ | three bugs: hidden maximized frame on top (wxQt Maximize showed it), popups inherited disabled updates from a frozen parent, DropDown lost its pick when hidden |
 | Save preset dialog, type a name, save user preset | ✅ | dialogs with Layout()+Fit() recursed to a stack overflow (synchronous Qt resize) |
-| Soft keyboard over dialogs | ❌ | the keyboard covers the dialog's buttons; dialog not moved |
+| Soft keyboard over dialogs | ✅ | dialog moved above the keyboard (was covered) |
 | Save preset dialog heading label | ⚠️ | missing |
+| Filaments tab, colour picker (QColorDialog), modified marker | ✅ | dialogs were at the top-left: now centred when first shown |
+| Printers tab, Bed shape dialog (2D preview, Shape choice, Circular) | ✅ | native combo boxes never opened on tap: now open on release |
 
 ## Test environment note
 Tests now run on `pstab` (1280x800, DPR 1, made by avdmanager into avd/): ~2.6 GB of host RAM with PrusaSlicer running.
