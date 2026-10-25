@@ -16743,6 +16743,28 @@ index faa9db8..c6999d7 100644
      // append menus for Menu button from TopBar
  
      m_bar_menus.AppendMenuItem(fileMenu, _L("&File"));
+diff --git a/src/slic3r/GUI/OG_CustomCtrl.cpp b/src/slic3r/GUI/OG_CustomCtrl.cpp
+index e5ad433..1abe144 100644
+--- a/src/slic3r/GUI/OG_CustomCtrl.cpp
++++ b/src/slic3r/GUI/OG_CustomCtrl.cpp
+@@ -702,8 +702,16 @@ void OG_CustomCtrl::CtrlLine::render(wxDC& dc, wxCoord v_pos)
+                     if (child->IsWindow())
+                         h_pos += child->GetWindow()->GetSize().x + ctrl->m_h_gap;
+             }
+-            else if (field->getWindow())
++            else if (field->getWindow()) {
++#ifdef __ANDROID__
++                // continue from where the layout put the field: the icons drawn above can be narrower than the
++                // "search_blink" slots the layout reserved, and the side text then slid under the field
++                const wxWindow* win = field->getWindow();
++                h_pos = std::max<wxCoord>(h_pos, win->GetPosition().x) + win->GetSize().x + ctrl->m_h_gap;
++#else
+                 h_pos += (opt.opt.width >= 0 ? opt.opt.width * ctrl->m_em_unit : field->getWindow()->GetSize().x) + ctrl->m_h_gap;
++#endif
++            }
+         }
+ 
+         // add field
 diff --git a/src/slic3r/GUI/OpenGLManager.cpp b/src/slic3r/GUI/OpenGLManager.cpp
 index b42a71f..ebd736f 100644
 --- a/src/slic3r/GUI/OpenGLManager.cpp

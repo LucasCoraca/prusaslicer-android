@@ -1395,7 +1395,7 @@ index 32789f2..2800f8a 100644
  }
  
 diff --git a/src/qt/dc.cpp b/src/qt/dc.cpp
-index 9ffcb2d..b9098a6 100644
+index 9ffcb2d..437c303 100644
 --- a/src/qt/dc.cpp
 +++ b/src/qt/dc.cpp
 @@ -13,6 +13,9 @@
@@ -1450,6 +1450,17 @@ index 9ffcb2d..b9098a6 100644
  void wxQtDCImpl::Clear()
  {
      int width, height;
+@@ -826,6 +846,10 @@ void wxQtDCImpl::DoDrawIcon(const wxIcon& icon, wxCoord x, wxCoord y)
+ void wxQtDCImpl::DoDrawBitmap(const wxBitmap &bmp, wxCoord x, wxCoord y,
+                           bool useMask )
+ {
++    // drawing an invalid bitmap draws nothing on the other ports (it has no pixmap here: GetHandle() is null)
++    if ( !bmp.IsOk() || !bmp.GetHandle() )
++        return;
++
+     QPixmap pix = *bmp.GetHandle();
+ 
+     if ( GetLayoutDirection() == wxLayout_RightToLeft )
 diff --git a/src/qt/dcclient.cpp b/src/qt/dcclient.cpp
 index 675d127..caca55a 100644
 --- a/src/qt/dcclient.cpp
