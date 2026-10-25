@@ -56,6 +56,7 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Save preset dialog heading label | ⚠️ | missing |
 | Filaments tab, colour picker (QColorDialog), modified marker | ✅ | dialogs were at the top-left: now centred when first shown |
 | Printers tab, Bed shape dialog (2D preview, Shape choice, Circular) | ✅ | native combo boxes never opened on tap: now open on release |
+| Configuration menu, Preferences dialog: check boxes, tabs | ✅ | taps lost in dialogs with scroll areas: touch points carried the window offset |
 
 ## Test environment note
 Tests now run on `pstab` (1280x800, DPR 1, made by avdmanager into avd/): ~2.6 GB of host RAM with PrusaSlicer running.

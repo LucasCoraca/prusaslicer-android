@@ -1229,10 +1229,10 @@ index 94b0718..3f9c1f9 100644
  
  wxAnyButton::State wxAnyButton::QtGetCurrentState() const
 diff --git a/src/qt/app.cpp b/src/qt/app.cpp
-index 9521282..58ffd19 100644
+index 9521282..c1c4e75 100644
 --- a/src/qt/app.cpp
 +++ b/src/qt/app.cpp
-@@ -14,7 +14,146 @@
+@@ -14,7 +14,179 @@
  #include "wx/qt/private/utils.h"
  #include "wx/qt/private/converter.h"
  #include <QtCore/QStringList>
@@ -1241,6 +1241,9 @@ index 9521282..58ffd19 100644
 +#include <QtWidgets/QWidget>
 +#include <QtGui/QMouseEvent>
 +#include <QtGui/QTouchEvent>
++#ifdef __ANDROID__
++#include <QtGui/private/qeventpoint_p.h> // QMutableEventPoint
++#endif
 +#include <QtGui/QWindow>
 +#include <QtWidgets/QComboBox>
 +#include <QtCore/QPointer>
@@ -1265,12 +1268,17 @@ index 9521282..58ffd19 100644
 +            case QEvent::MouseButtonDblClick:
 +            case QEvent::MouseMove:
 +                break;
++            case QEvent::TouchBegin:
++            case QEvent::TouchUpdate:
++            case QEvent::TouchEnd:
++            case QEvent::TouchCancel:
++                return FixTouch(obj, static_cast<QTouchEvent*>(event));
 +            default:
 +                return false;
 +        }
 +
 +        QWindow* const window = qobject_cast<QWindow*>(obj);
-+        if ( !window || m_resending || window->position().isNull() )
++        if ( !window || event == m_resent || window->position().isNull() )
 +            return false;
 +
 +        auto* const me = static_cast<QMouseEvent*>(event);
@@ -1279,14 +1287,39 @@ index 9521282..58ffd19 100644
 +                          me->button(), me->buttons(), me->modifiers(), me->source(), me->pointingDevice());
 +        fixed.setTimestamp(me->timestamp());
 +
-+        m_resending = true;
++        // Not a flag held across sendEvent(): a click that opens a modal dialog runs the dialog's whole event loop
++        // inside this call, and every event of the dialog would then have skipped the fix (dialogs opened from a
++        // menu took no input at all).
++        QEvent* const outer = m_resent;
++        m_resent = &fixed;
 +        QCoreApplication::sendEvent(window, &fixed);
-+        m_resending = false;
++        m_resent = outer;
 +        return true;
 +    }
 +
 +private:
-+    bool m_resending = false;
++    // The same offset hits the touch points. They matter as soon as a widget in the window takes touch (scroll areas
++    // do, for kinetic scrolling): Qt then delivers the touch to it with the wrong points and synthesizes no mouse
++    // click - every tap into such a dialog (PrusaSlicer's Preferences) was lost. Correct the points in place and let
++    // Qt deliver the event as usual (its own mouse synthesis works from the platform's points and goes through the
++    // mouse correction above).
++    bool FixTouch(QObject* obj, QTouchEvent* te)
++    {
++        QWindow* const window = qobject_cast<QWindow*>(obj);
++        if ( !window || window->position().isNull() || te->points().isEmpty() )
++            return false;
++
++        const QPointF delta = QPointF(window->position()) / window->devicePixelRatio();
++        for ( QEventPoint& p : const_cast<QList<QEventPoint>&>(te->points()) )
++        {
++            QMutableEventPoint::setPosition(p, p.position() - delta);
++            QMutableEventPoint::setScenePosition(p, p.scenePosition() - delta);
++            // the global position is right already (a shifted one put taps at window-local spots on the screen)
++        }
++        return false;
++    }
++
++    QEvent* m_resent = nullptr; // the corrected event being delivered (not to be corrected again)
 +};
 +
 +// The same plugin flushes a partial repaint of such a window to the wrong place: only part of the dirty
@@ -1379,7 +1412,7 @@ index 9521282..58ffd19 100644
  #include <QSurfaceFormat>
  
  #include <algorithm>
-@@ -38,9 +177,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -38,9 +210,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
  
      wxConvCurrent = &wxConvUTF8;
  
@@ -1398,7 +1431,7 @@ index 9521282..58ffd19 100644
      QSurfaceFormat::setDefaultFormat(format);
  
      const int argcA = argc_;
-@@ -62,7 +209,22 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -62,7 +242,22 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
      // of the QApplication object. In addition, argc must be greater than zero and argv must
      // contain at least one valid character string.
  
