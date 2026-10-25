@@ -2883,7 +2883,7 @@ index 0000000..475a771
 +
 +#endif // wxUSE_WEBVIEW && __WXQT__ && __ANDROID__
 diff --git a/src/qt/window.cpp b/src/qt/window.cpp
-index ebc661e..e488781 100644
+index ebc661e..6940ce6 100644
 --- a/src/qt/window.cpp
 +++ b/src/qt/window.cpp
 @@ -20,6 +20,11 @@
@@ -2898,7 +2898,18 @@ index ebc661e..e488781 100644
  
  #ifndef WX_PRECOMP
      #include "wx/app.h"
-@@ -347,8 +352,24 @@ wxWindowQt::wxWindowQt(wxWindowQt *parent, wxWindowID id, const wxPoint& pos, co
+@@ -98,6 +103,10 @@ public:
+ 
+     bool event(QEvent *e) override;
+ 
++    // QScrollArea's version scrolls its content widget to the new focus, but wx manages the contents itself and
++    // never sets that widget: hiding a child that had the focus (a wizard page) crashed in ensureWidgetVisible().
++    bool focusNextPrevChild(bool next) override { return QWidget::focusNextPrevChild(next); }
++
+     void OnActionTriggered(int action);
+     void OnSliderReleased();
+ };
+@@ -347,8 +356,24 @@ wxWindowQt::wxWindowQt(wxWindowQt *parent, wxWindowID id, const wxPoint& pos, co
  }
  
  
@@ -2923,7 +2934,7 @@ index ebc661e..e488781 100644
      if ( !m_qtWindow )
      {
          // Pseudo windows don't have a valid m_qtWindow, so just return.
-@@ -416,6 +437,10 @@ bool wxWindowQt::Create( wxWindowQt * parent, wxWindowID id, const wxPoint & pos
+@@ -416,6 +441,10 @@ bool wxWindowQt::Create( wxWindowQt * parent, wxWindowID id, const wxPoint & pos
  
      if ( m_qtContainer )
      {
@@ -2934,7 +2945,7 @@ index ebc661e..e488781 100644
          // If wx[HV]SCROLL is not given, the corresponding scrollbar is not shown
          // at all. Otherwise it may be shown only on demand (default) or always, if
          // the wxALWAYS_SHOW_SB is specified.
-@@ -489,9 +514,17 @@ void wxWindowQt::PostCreation(bool generic)
+@@ -489,9 +518,17 @@ void wxWindowQt::PostCreation(bool generic)
  //    SetWindowStyleFlag( style );
  //
  
@@ -2952,7 +2963,7 @@ index ebc661e..e488781 100644
  
      GetHandle()->setFont( wxWindowBase::GetFont().GetHandle() );
  
-@@ -516,6 +549,7 @@ void wxWindowQt::AddChild( wxWindowBase *child )
+@@ -516,6 +553,7 @@ void wxWindowQt::AddChild( wxWindowBase *child )
      wxWindowBase::AddChild( child );
  }
  
@@ -2960,7 +2971,7 @@ index ebc661e..e488781 100644
  bool wxWindowQt::Show( bool show )
  {
      if ( !wxWindowBase::Show( show ))
-@@ -528,6 +562,17 @@ bool wxWindowQt::Show( bool show )
+@@ -528,6 +566,17 @@ bool wxWindowQt::Show( bool show )
          qtWidget->setVisible( show );
      }
  
@@ -2978,7 +2989,7 @@ index ebc661e..e488781 100644
      return true;
  }
  
-@@ -567,7 +612,8 @@ bool wxWindowQt::Reparent( wxWindowBase *parent )
+@@ -567,7 +616,8 @@ bool wxWindowQt::Reparent( wxWindowBase *parent )
      if ( !wxWindowBase::Reparent( parent ))
          return false;
  
@@ -2988,7 +2999,7 @@ index ebc661e..e488781 100644
  
      return true;
  }
-@@ -602,7 +648,14 @@ void wxWindowQt::Update()
+@@ -602,7 +652,14 @@ void wxWindowQt::Update()
  
      QWidget* const widget = wxQtGetDrawingWidget(m_qtContainer, GetHandle());
  
@@ -3003,20 +3014,27 @@ index ebc661e..e488781 100644
  }
  
  // Helper function to refresh the intersection area of the widget _widget_
-@@ -1253,6 +1306,12 @@ void wxWindowQt::DoSetSize(int x, int y, int width, int height, int sizeFlags )
+@@ -1253,6 +1310,19 @@ void wxWindowQt::DoSetSize(int x, int y, int width, int height, int sizeFlags )
  
      DoMoveWindow( x, y, width, height );
  
 +    // A parent's Layout() sets the size of every child; when it does not change, Qt sends no resize event, so
 +    // a child whose contents changed in the meantime (controls added to or shown in its sizer) would never be
 +    // laid out again. GTK re-allocates such children anyway; do the same.
++    // Done with a size event like a real resize: a scrolled window only recomputes its virtual size from its
++    // contents on wxEVT_SIZE (wxScrollHelper::HandleOnSize), so a page shown in it would stay as tall as before.
 +    if ( width == w && height == h && GetSizer() )
-+        Layout();
++    {
++        wxSizeEvent event(GetSize(), GetId());
++        event.SetEventObject(this);
++        if ( !HandleWindowEvent(event) )
++            Layout();
++    }
 +
      // An annoying feature of Qt
      // if a control is created with size of zero, it is set as hidden by qt
      // if it is then resized, in some cases it remains hidden, so it
-@@ -1394,6 +1453,11 @@ void wxWindowQt::SetAcceleratorTable( const wxAcceleratorTable& accel )
+@@ -1394,6 +1464,11 @@ void wxWindowQt::SetAcceleratorTable( const wxAcceleratorTable& accel )
      {
          delete *it;
      }
@@ -3028,7 +3046,7 @@ index ebc661e..e488781 100644
  
      m_qtShortcuts = accel.ConvertShortcutTable(GetHandle());
  
-@@ -1425,14 +1489,19 @@ bool wxWindowQt::QtSetBackgroundStyle()
+@@ -1425,14 +1500,19 @@ bool wxWindowQt::QtSetBackgroundStyle()
      {
          if (m_backgroundStyle == wxBG_STYLE_PAINT)
          {
@@ -3053,7 +3071,7 @@ index ebc661e..e488781 100644
          }
          else if (m_backgroundStyle == wxBG_STYLE_SYSTEM)
          {
-@@ -1444,8 +1513,10 @@ bool wxWindowQt::QtSetBackgroundStyle()
+@@ -1444,8 +1524,10 @@ bool wxWindowQt::QtSetBackgroundStyle()
          }
          else if (m_backgroundStyle == wxBG_STYLE_ERASE)
          {
@@ -3066,7 +3084,7 @@ index ebc661e..e488781 100644
              // Qt should not clear the background (default):
              widget->setAutoFillBackground(false);
          }
-@@ -1474,8 +1545,24 @@ void wxQtChangeRoleColour(QPalette::ColorRole role,
+@@ -1474,8 +1556,24 @@ void wxQtChangeRoleColour(QPalette::ColorRole role,
                            QWidget* widget,
                            const wxColour& colour)
  {
@@ -3092,7 +3110,7 @@ index ebc661e..e488781 100644
      widget->setPalette(palette);
  }
  
-@@ -1486,6 +1573,10 @@ bool wxWindowQt::SetBackgroundColour(const wxColour& colour)
+@@ -1486,6 +1584,10 @@ bool wxWindowQt::SetBackgroundColour(const wxColour& colour)
      if ( !wxWindowBase::SetBackgroundColour(colour) )
          return false;
  
@@ -3103,7 +3121,7 @@ index ebc661e..e488781 100644
      if ( colour.IsOk() )
      {
          QWidget *widget = QtGetParentWidget();
-@@ -1500,6 +1591,9 @@ bool wxWindowQt::SetForegroundColour(const wxColour& colour)
+@@ -1500,6 +1602,9 @@ bool wxWindowQt::SetForegroundColour(const wxColour& colour)
      if (!wxWindowBase::SetForegroundColour(colour))
          return false;
  
@@ -3113,7 +3131,7 @@ index ebc661e..e488781 100644
      QWidget *widget = QtGetParentWidget();
      wxQtChangeRoleColour(widget->foregroundRole(), widget, colour);
  
-@@ -2134,6 +2228,13 @@ bool wxWindowQt::EnableTouchEvents(int eventsMask)
+@@ -2134,6 +2239,13 @@ bool wxWindowQt::EnableTouchEvents(int eventsMask)
  {
      wxCHECK_MSG( GetHandle(), false, "can't be called before creating the window" );
  

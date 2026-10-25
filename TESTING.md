@@ -21,3 +21,7 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Wizard: log-in page, Prusa Account form, cookie banner, typing | ✅ | was 4x zoomed (web view laid out 1x1 first) |
 | Wizard: configuration sources, check boxes toggle | ✅ | ticks were never drawn (wxQt toggle button bitmap) |
 | Wizard: profile download over HTTPS | ✅ | all vendors, ~1 min on the emulator |
+| Wizard: printer pages, touch scrolling | ✅ | page had viewport height (no size event when size unchanged) |
+| Wizard: pick a printer (XL 5T 0.4) | ✅ | crashed in QScrollArea::ensureWidgetVisible (wxQt scroll area) |
+| Wizard: page index overlaps the logo when many pages | ⚠️ | cosmetic |
+| Small native check boxes (~14 px) | ⚠️ | hard to hit with a finger |
