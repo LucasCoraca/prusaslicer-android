@@ -27,3 +27,12 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Small native check boxes (~14 px) | ⚠️ | hard to hit with a finger |
 | Wizard: filaments page, type/vendor filter | ✅ | filtered by the previous item (wxEVT_LISTBOX before selection) |
 | Wizard: filament check list toggle | ✅ | |
+| Wizard: updates, downloads, reload-from-disk, view mode (radio buttons), Finish | ✅ | |
+| Send-system-info dialog, verbatim data dialog | ✅ | verbatim dialog opens top-left, not centred |
+| Main window after the wizard (CORE One INDX: 4 tools, bed texture) | ✅ | |
+| TopBar Menu (File/Edit/Window/View/Configuration/Help, submenus) | ✅ | was Qt's Android action bar with no menus |
+| Add (import OBJ) through the Android file picker | ✅ | |
+| File > Open Project (3MF with presets) | ✅ | picker's Recent view was empty; Downloads works |
+| Slice now | ✅ | 3DBenchy, 320 layers, 1h4m |
+| G-code preview (libvgcode GLES), legend, sliders shown | ✅ | |
+| App update check / "new prerelease" notification on Android | ⚠️ | desktop installer, should be off |
