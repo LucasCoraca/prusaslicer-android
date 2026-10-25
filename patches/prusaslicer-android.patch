@@ -603,10 +603,10 @@ index 71efa5d..a91bfcc 100644
      find_package(PkgConfig REQUIRED)
  
 diff --git a/src/slic3r/GUI/GLCanvas3D.cpp b/src/slic3r/GUI/GLCanvas3D.cpp
-index ae19510..9b056c1 100644
+index ae19510..41dc949 100644
 --- a/src/slic3r/GUI/GLCanvas3D.cpp
 +++ b/src/slic3r/GUI/GLCanvas3D.cpp
-@@ -1,7966 +1,8002 @@
+@@ -1,7966 +1,8064 @@
 -///|/ Copyright (c) Prusa Research 2018 - 2023 Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, David Kocík @kocikdav, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
 -///|/ Copyright (c) BambuStudio 2023 manch1n @manch1n
 -///|/ Copyright (c) SuperSlicer 2023 Remi Durand @supermerill
@@ -8584,6 +8584,8 @@ index ae19510..9b056c1 100644
 +///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 +///|/
 +#include "libslic3r/libslic3r.h"
++#define SLIC3R_DEBUG_MOUSE_EVENTS // TEMP-DEBUG android
++#pragma clang diagnostic ignored "-Wformat-security" // TEMP-DEBUG android
 +#include "GLCanvas3D.hpp"
 +
 +#include <boost/nowide/fstream.hpp>
@@ -11591,6 +11593,12 @@ index ae19510..9b056c1 100644
 +        m_canvas->Bind(wxEVT_KEY_DOWN, &GLCanvas3D::on_key, this);
 +        m_canvas->Bind(wxEVT_KEY_UP, &GLCanvas3D::on_key, this);
 +        m_canvas->Bind(wxEVT_MOUSEWHEEL, &GLCanvas3D::on_mouse_wheel, this);
++#ifdef __ANDROID__
++        m_canvas->Bind(wxEVT_GESTURE_PAN, &GLCanvas3D::on_gesture, this);
++        m_canvas->Bind(wxEVT_GESTURE_ZOOM, &GLCanvas3D::on_gesture, this);
++        m_canvas->Bind(wxEVT_GESTURE_ROTATE, &GLCanvas3D::on_gesture, this);
++        m_canvas->EnableTouchEvents(wxTOUCH_PAN_GESTURES | wxTOUCH_ZOOM_GESTURE | wxTOUCH_ROTATE_GESTURE);
++#endif // __ANDROID__
 +        m_canvas->Bind(wxEVT_TIMER, &GLCanvas3D::on_timer, this);
 +        m_canvas->Bind(EVT_GLCANVAS_RENDER_TIMER, &GLCanvas3D::on_render_timer, this);
 +        m_toolbar_highlighter.set_timer_owner(m_canvas, 0);
@@ -11625,6 +11633,11 @@ index ae19510..9b056c1 100644
 +        m_canvas->Unbind(wxEVT_KEY_DOWN, &GLCanvas3D::on_key, this);
 +        m_canvas->Unbind(wxEVT_KEY_UP, &GLCanvas3D::on_key, this);
 +        m_canvas->Unbind(wxEVT_MOUSEWHEEL, &GLCanvas3D::on_mouse_wheel, this);
++#ifdef __ANDROID__
++        m_canvas->Unbind(wxEVT_GESTURE_PAN, &GLCanvas3D::on_gesture, this);
++        m_canvas->Unbind(wxEVT_GESTURE_ZOOM, &GLCanvas3D::on_gesture, this);
++        m_canvas->Unbind(wxEVT_GESTURE_ROTATE, &GLCanvas3D::on_gesture, this);
++#endif // __ANDROID__
 +        m_canvas->Unbind(wxEVT_TIMER, &GLCanvas3D::on_timer, this);
 +        m_canvas->Unbind(EVT_GLCANVAS_RENDER_TIMER, &GLCanvas3D::on_render_timer, this);
 +        m_canvas->Unbind(wxEVT_LEFT_DOWN, &GLCanvas3D::on_mouse, this);
@@ -12147,6 +12160,55 @@ index ae19510..9b056c1 100644
 +        evt.Skip();   // Needed to have EVT_CHAR generated as well
 +    }
 +}
++
++#ifdef __ANDROID__
++void GLCanvas3D::on_gesture(wxGestureEvent& evt)
++{
++    if (!m_initialized || !_set_current())
++        return;
++
++    Camera& camera = wxGetApp().plater()->get_camera();
++    // gesture positions are logical (like mouse events before on_mouse() scales them)
++#if ENABLE_RETINA_GL
++    const double scale = m_retina_helper->get_scale_factor();
++#else
++    const double scale = 1.0;
++#endif
++    const wxPoint p = evt.GetPosition();
++    const Vec2d fingers(p.x * scale, p.y * scale);
++    // the bed plane point under a screen position
++    const float z = 0.0f;
++    auto on_bed = [this, &z](const Vec2d& screen) { return _mouse_to_3d(Point(coord_t(screen.x()), coord_t(screen.y())), &z, true); };
++
++    if (evt.GetEventType() == wxEVT_GESTURE_PAN) {
++        // two fingers move: drag the scene with them, as a right/middle button drag does
++        const wxPoint d = static_cast<wxPanGestureEvent&>(evt).GetDelta();
++        const Vec2d delta(d.x * scale, d.y * scale);
++        if (!wxGetApp().app_config->get_bool("use_free_camera"))
++            camera.recover_from_free_camera();
++        camera.set_target(camera.get_target() + on_bed(fingers - delta) - on_bed(fingers));
++    }
++    else if (evt.GetEventType() == wxEVT_GESTURE_ZOOM) {
++        // pinch: zoom toward the fingers - keep the bed point below them where it is
++        static double zoom_start = 1.0;
++        if (evt.IsGestureStart())
++            zoom_start = camera.get_zoom();
++        const Vec3d before = on_bed(fingers);
++        camera.set_zoom(zoom_start * static_cast<wxZoomGestureEvent&>(evt).GetZoomFactor());
++        camera.set_target(camera.get_target() + before - on_bed(fingers));
++    }
++    else if (evt.GetEventType() == wxEVT_GESTURE_ROTATE) {
++        // twist: orbit around the view axis
++        static double last_angle = 0.0;
++        if (evt.IsGestureStart())
++            last_angle = 0.0;
++        const double angle = static_cast<wxRotateGestureEvent&>(evt).GetRotationAngle();
++        camera.rotate_on_sphere(-(angle - last_angle), 0.0, current_printer_technology() != ptSLA);
++        last_angle = angle;
++    }
++    m_dirty = true;
++}
++#endif // __ANDROID__
 +
 +void GLCanvas3D::on_mouse_wheel(wxMouseEvent& evt)
 +{
@@ -16576,7 +16638,7 @@ index ae19510..9b056c1 100644
 +} // namespace GUI
 +} // namespace Slic3r
 diff --git a/src/slic3r/GUI/GLCanvas3D.hpp b/src/slic3r/GUI/GLCanvas3D.hpp
-index dbaacc3..6b151cf 100644
+index dbaacc3..5cef850 100644
 --- a/src/slic3r/GUI/GLCanvas3D.hpp
 +++ b/src/slic3r/GUI/GLCanvas3D.hpp
 @@ -44,7 +44,7 @@ class wxGLContext;
@@ -16588,6 +16650,17 @@ index dbaacc3..6b151cf 100644
  
  namespace Slic3r {
  
+@@ -855,6 +855,10 @@ public:
+     void on_char(wxKeyEvent& evt);
+     void on_key(wxKeyEvent& evt);
+     void on_mouse_wheel(wxMouseEvent& evt);
++#ifdef __ANDROID__
++    // two-finger touch gestures (sent by our wxQt GL canvas): pan, pinch zoom toward the fingers, twist to orbit
++    void on_gesture(wxGestureEvent& evt);
++#endif // __ANDROID__
+     void on_timer(wxTimerEvent& evt);
+     void on_render_timer(wxTimerEvent& evt);
+     void on_mouse(wxMouseEvent& evt);
 diff --git a/src/slic3r/GUI/GUI_App.cpp b/src/slic3r/GUI/GUI_App.cpp
 index 8e65dcb..c508159 100644
 --- a/src/slic3r/GUI/GUI_App.cpp

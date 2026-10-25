@@ -36,3 +36,6 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Slice now | ✅ | 3DBenchy, 320 layers, 1h4m |
 | G-code preview (libvgcode GLES), legend, sliders shown | ✅ | |
 | App update check / "new prerelease" notification on Android | ⚠️ | desktop installer, should be off |
+| Export G-code through the Android save dialog | ✅ | .bgcode lands in Downloads; notification shows the cache path |
+| 3D view: one-finger orbit | ✅ | |
+| 3D view: pinch zoom in/out (toward the fingers), two-finger pan, twist | ✅ | PrusaSlicer had no gesture handling; added |
