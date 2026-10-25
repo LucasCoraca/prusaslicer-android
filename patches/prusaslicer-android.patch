@@ -603,10 +603,10 @@ index 71efa5d..a91bfcc 100644
      find_package(PkgConfig REQUIRED)
  
 diff --git a/src/slic3r/GUI/GLCanvas3D.cpp b/src/slic3r/GUI/GLCanvas3D.cpp
-index ae19510..41dc949 100644
+index ae19510..e1096cd 100644
 --- a/src/slic3r/GUI/GLCanvas3D.cpp
 +++ b/src/slic3r/GUI/GLCanvas3D.cpp
-@@ -1,7966 +1,8064 @@
+@@ -1,7966 +1,8051 @@
 -///|/ Copyright (c) Prusa Research 2018 - 2023 Enrico Turri @enricoturri1966, Oleksandra Iushchenko @YuSanka, Tomáš Mészáros @tamasmeszaros, Lukáš Matěna @lukasmatena, Vojtěch Bubník @bubnikv, David Kocík @kocikdav, Filip Sykala @Jony01, Lukáš Hejl @hejllukas, Vojtěch Král @vojtechkral
 -///|/ Copyright (c) BambuStudio 2023 manch1n @manch1n
 -///|/ Copyright (c) SuperSlicer 2023 Remi Durand @supermerill
@@ -8584,8 +8584,6 @@ index ae19510..41dc949 100644
 +///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
 +///|/
 +#include "libslic3r/libslic3r.h"
-+#define SLIC3R_DEBUG_MOUSE_EVENTS // TEMP-DEBUG android
-+#pragma clang diagnostic ignored "-Wformat-security" // TEMP-DEBUG android
 +#include "GLCanvas3D.hpp"
 +
 +#include <boost/nowide/fstream.hpp>
@@ -10680,17 +10678,6 @@ index ae19510..41dc949 100644
 +        return;
 +
 +    // ensures this canvas is current and initialized
-+    {   // TEMP-DEBUG android
-+        static int n = 0;
-+        if (n++ < 30)
-+            BOOST_LOG_TRIVIAL(warning) << "DBG render: shown=" << _is_shown_on_screen() << " canvas_shown=" << m_canvas->IsShown()
-+                << " onscreen=" << m_canvas->IsShownOnScreen() << " size=" << m_canvas->GetSize().x << "x" << m_canvas->GetSize().y
-+                << " ctx=" << (m_context != nullptr);
-+        if (n < 3)
-+            for (wxWindow* w = m_canvas; w != nullptr; w = w->GetParent())
-+                BOOST_LOG_TRIVIAL(warning) << "DBG   parent " << w->GetClassInfo()->GetClassName() << " name=" << w->GetName().ToUTF8().data()
-+                    << " shown=" << w->IsShown() << " tlw=" << w->IsTopLevel();
-+    }
 +    if (!_is_shown_on_screen() || !_set_current() || !wxGetApp().init_opengl())
 +        return;
 +

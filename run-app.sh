@@ -13,4 +13,7 @@ sleep $WAIT
 echo "pid: $($A shell pidof org.prusaport.slicer)"
 $A exec-out screencap -p > $S/ps-latest.png
 python3 -c "from PIL import Image; im=Image.open('$S/ps-latest.png'); im.convert('RGB').resize((im.width//2, im.height//2)).save('$S/ps-latest-s.png')"
+# the emulator's qemu grows with host-side GPU memory (swangle); restart it before it eats the shared host
+RSS=$(ps -o rss=,args= -C qemu-system-x86_64-headless | grep -- "-port 5580" | awk '{print int($1/1024)}')
+[ -n "$RSS" ] && [ "$RSS" -gt 6000 ] && echo "WARNING: emulator qemu at ${RSS} MB - restart it (adb -s emulator-5580 emu kill; ./start-emulator.sh)"
 $A logcat -d | grep -E "F DEBUG +: +(#[0-9]+|signal|Abort)" | sed 's/.*F DEBUG   :  *//; s|/data/app/[^ ]*/lib/x86_64/||; s/(BuildId: [0-9a-f]*)//' | head -30

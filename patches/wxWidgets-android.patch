@@ -2444,6 +2444,29 @@ index 2c3fed1..e3454db 100644
 +    wxTopLevelWindowBase::DoSetSize(x, y, width, height, sizeFlags);
 +}
 +#endif // __ANDROID__
+diff --git a/src/qt/treectrl.cpp b/src/qt/treectrl.cpp
+index 62555ab..ccc99ce 100644
+--- a/src/qt/treectrl.cpp
++++ b/src/qt/treectrl.cpp
+@@ -773,14 +773,16 @@ unsigned wxTreeCtrl::GetCount() const
+     return CountChildren(root->child(0));
+ }
+ 
++// The indentation of child items, in pixels (it was mapped to the column count: SetIndent(0) left the tree with no
++// column at all, which dropped the hidden root and showed nothing).
+ unsigned wxTreeCtrl::GetIndent() const
+ {
+-    return GetQTreeWidget()->columnCount();
++    return GetQTreeWidget()->indentation();
+ }
+ 
+ void wxTreeCtrl::SetIndent(unsigned int indent)
+ {
+-    GetQTreeWidget()->setColumnCount( indent );
++    GetQTreeWidget()->setIndentation( indent );
+ }
+ 
+ void wxTreeCtrl::SetImageList(wxImageList *imageList)
 diff --git a/src/qt/webview_android.cpp b/src/qt/webview_android.cpp
 new file mode 100644
 index 0000000..475a771

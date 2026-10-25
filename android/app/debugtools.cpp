@@ -10,6 +10,7 @@
 
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QListWidget>
+#include <QtWidgets/QTreeWidget>
 #include <QtWidgets/QWidget>
 #include <QtGui/QFontMetrics>
 
@@ -30,6 +31,25 @@ void dump(wxWindow *w, int depth)
         const QRect g = q->geometry();
         qt = std::to_string(g.x()) + "," + std::to_string(g.y()) + " " + std::to_string(g.width()) + "x" + std::to_string(g.height())
             + (q->isVisible() ? " vis" : " hid") + (q->isVisibleTo(q->window()) ? "" : "(to-window:hid)");
+        if (QTreeWidget *tw = qobject_cast<QTreeWidget*>(q)) {
+            qt += " tree[top=" + std::to_string(tw->topLevelItemCount()) + " hdr=" + (tw->isHeaderHidden() ? "hid" : "vis")
+                + " rootdeco=" + (tw->rootIsDecorated() ? "1" : "0");
+            qt += std::string(" rootidx=") + (tw->rootIndex().isValid() ? tw->model()->data(tw->rootIndex()).toString().toStdString() : "none")
+                + " viewport=" + std::to_string(tw->viewport()->width()) + "x" + std::to_string(tw->viewport()->height())
+                + " iconsz=" + std::to_string(tw->iconSize().width()) + "x" + std::to_string(tw->iconSize().height());
+            if (tw->topLevelItemCount() > 0 && tw->topLevelItem(0)->childCount() > 0) {
+                const QRect r = tw->visualItemRect(tw->topLevelItem(0)->child(0));
+                qt += " row0=" + std::to_string(r.x()) + "," + std::to_string(r.y()) + " " + std::to_string(r.width()) + "x" + std::to_string(r.height());
+            }
+            for (int i = 0; i < std::min(tw->topLevelItemCount(), 2); ++i) {
+                QTreeWidgetItem *it = tw->topLevelItem(i);
+                qt += " '" + it->text(0).toStdString() + "'(children=" + std::to_string(it->childCount())
+                    + (it->isHidden() ? " hidden" : "") + (it->isExpanded() ? " exp" : "") + ")";
+                for (int c = 0; c < std::min(it->childCount(), 3); ++c)
+                    qt += " >'" + it->child(c)->text(0).toStdString() + "'" + (it->child(c)->isHidden() ? "(hidden)" : "");
+            }
+            qt += "]";
+        }
         if (QListWidget *lw = qobject_cast<QListWidget*>(q)) {
             qt += " list[count=" + std::to_string(lw->count()) + " updates=" + (lw->updatesEnabled() ? "on" : "OFF");
             for (int i = 0; i < std::min(lw->count(), 4); ++i)

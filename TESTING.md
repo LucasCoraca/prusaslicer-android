@@ -39,3 +39,14 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Export G-code through the Android save dialog | ✅ | .bgcode lands in Downloads; notification shows the cache path |
 | 3D view: one-finger orbit | ✅ | |
 | 3D view: pinch zoom in/out (toward the fingers), two-finger pan, twist | ✅ | PrusaSlicer had no gesture handling; added |
+| Import STL, drag object on the bed | ✅ | |
+| Long press = right click: object context menu | ✅ | |
+| Add instance, Arrange | ✅ | |
+| Move gizmo (axis drag), Rotate gizmo (ring drag) | ✅ | |
+| Cut gizmo: ImGui panel, edit cut height, Perform cut | ✅ | |
+| Print Settings tab: page tree | ✅ | was empty: wxQt SetIndent() set the column count |
+| Memory | ⚠️ | PrusaSlicer needs ~1.2 GB resident, 2.7 GB peak while loading the Prusa profiles (same as desktop); 4 GB phones may be tight |
+
+## Test environment note
+The emulator with PrusaSlicer running costs ~12 GB of host RAM (GPU emulation at 2560x1600). On the shared build machine
+start it only with that much headroom (`free -m`); start-emulator.sh stops it if qemu grows past PS_EMU_MAX_MB.
