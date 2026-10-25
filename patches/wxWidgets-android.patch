@@ -843,10 +843,10 @@ index 0000000..db339fa
 +}
 diff --git a/src/qt/android/java/org/orcaport/wx/WebViewBridge.java b/src/qt/android/java/org/orcaport/wx/WebViewBridge.java
 new file mode 100644
-index 0000000..fcc98a7
+index 0000000..a60e820
 --- /dev/null
 +++ b/src/qt/android/java/org/orcaport/wx/WebViewBridge.java
-@@ -0,0 +1,337 @@
+@@ -0,0 +1,348 @@
 +package org.orcaport.wx;
 +
 +import android.app.Activity;
@@ -890,7 +890,11 @@ index 0000000..fcc98a7
 +    private final Activity activity;
 +    private WebView web;
 +    private FrameLayout root;
-+    private final FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(1, 1, Gravity.TOP | Gravity.START);
++    // Starts at the full size of its parent, not 1x1: a page that loads before the first setBounds() would get its
++    // initial scale for a 1 px wide viewport and keep it (Prusa's login page came up zoomed 4x).
++    private final FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
++        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.TOP | Gravity.START);
++    private boolean positioned; // got its bounds from the native side; hidden before that
 +    private final ArrayList<String> userScripts = new ArrayList<>();
 +    private final Map<String, Object> handlers = new HashMap<>();
 +    private volatile String url = "", title = "", userAgent = "";
@@ -926,6 +930,9 @@ index 0000000..fcc98a7
 +        s.setSupportMultipleWindows(true);
 +        s.setMediaPlaybackRequiresUserGesture(false);
 +        s.setSupportZoom(false);
++        // honour <meta name=viewport> (width=device-width => scale 1) and fit pages without one, as desktop browsers do
++        s.setUseWideViewPort(true);
++        s.setLoadWithOverviewMode(true);
 +        userAgent = s.getUserAgentString();
 +        web.setWebViewClient(new Client());
 +        web.setWebChromeClient(new Chrome());
@@ -946,7 +953,7 @@ index 0000000..fcc98a7
 +        addMessageHandlerNow("wx");
 +        root = contentRoot != null ? contentRoot : (FrameLayout) activity.getWindow().getDecorView().findViewById(android.R.id.content);
 +        root.addView(web, lp);
-+        web.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
++        web.setVisibility(visible && positioned ? View.VISIBLE : View.INVISIBLE);
 +        nativeEvent(id, EV_CREATED, "", "", 0);
 +    }
 +
@@ -955,14 +962,18 @@ index 0000000..fcc98a7
 +    public void setBounds(final int x, final int y, final int w, final int h) {
 +        activity.runOnUiThread(new Runnable() { public void run() {
 +            lp.leftMargin = x; lp.topMargin = y; lp.width = Math.max(w, 1); lp.height = Math.max(h, 1);
-+            if (web != null) web.setLayoutParams(lp);
++            positioned = true;
++            if (web != null) {
++                web.setLayoutParams(lp);
++                web.setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
++            }
 +        }});
 +    }
 +
 +    public void setVisible(final boolean v) {
 +        activity.runOnUiThread(new Runnable() { public void run() {
 +            visible = v;
-+            if (web != null) web.setVisibility(v ? View.VISIBLE : View.INVISIBLE);
++            if (web != null) web.setVisibility(v && positioned ? View.VISIBLE : View.INVISIBLE);
 +        }});
 +    }
 +
@@ -1184,6 +1195,26 @@ index 0000000..fcc98a7
 +        }
 +    }
 +}
+diff --git a/src/qt/anybutton.cpp b/src/qt/anybutton.cpp
+index 94b0718..3f9c1f9 100644
+--- a/src/qt/anybutton.cpp
++++ b/src/qt/anybutton.cpp
+@@ -140,11 +140,10 @@ void wxAnyButton::DoSetBitmap(const wxBitmapBundle& bitmap, State which)
+     // Cache the bitmap.
+     m_bitmaps[which] = bitmap;
+ 
+-    // Replace current bitmap only if the button is in the same state.
+-    if ( which == QtGetCurrentState() )
+-    {
+-        QtUpdateState();
+-    }
++    // Re-evaluate the shown bitmap: besides the bitmap of the current state, a change of the Normal one shows
++    // whenever the current state has none (a checked toggle button is "Pressed"; PrusaSlicer's CheckBox only sets
++    // Normal/Current, so the tick never appeared).
++    QtUpdateState();
+ }
+ 
+ wxAnyButton::State wxAnyButton::QtGetCurrentState() const
 diff --git a/src/qt/app.cpp b/src/qt/app.cpp
 index 9521282..59ed8ff 100644
 --- a/src/qt/app.cpp

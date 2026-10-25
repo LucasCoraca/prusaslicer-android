@@ -18,3 +18,6 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Wizard: welcome page text | ✅ | was clipped (wx partial text extents) |
 | Wizard: page switch repaint | ✅ | was half stale (Qt Android partial flush of dialogs) |
 | Wizard: log-in page web view | ✅ | Prusa Account page loads |
+| Wizard: log-in page, Prusa Account form, cookie banner, typing | ✅ | was 4x zoomed (web view laid out 1x1 first) |
+| Wizard: configuration sources, check boxes toggle | ✅ | ticks were never drawn (wxQt toggle button bitmap) |
+| Wizard: profile download over HTTPS | ✅ | all vendors, ~1 min on the emulator |
