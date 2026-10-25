@@ -200,6 +200,9 @@ void bootstrap()
     setenv("PS_DATA_DIR", data.c_str(), 1);
     // PrusaSlicer's default data dir is $XDG_CONFIG_HOME/PrusaSlicer (DirectoriesUtils.cpp) == `data`
     setenv("XDG_CONFIG_HOME", files.c_str(), 1);
+    // wxQt asks for no predictive text in text fields (keyboards otherwise hold back the word being typed: no
+    // search-as-you-type); Qt's Java side honours that only with this set (QtEditText, read when the keyboard opens)
+    setenv("QT_ANDROID_ENABLE_WORKAROUND_TO_DISABLE_PREDICTIVE_TEXT", "1", 1);
 
     const fs::path cabundle = fs::path(files) / "cacert.pem";
     if (build_ca_bundle(cabundle))

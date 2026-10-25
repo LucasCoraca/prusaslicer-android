@@ -2,6 +2,7 @@
 //   files/dump_tree  -> the wx window tree (class, name, shown, wx rect, Qt geometry/visibility) goes to logcat, tag
 //                       "prusa-tree"; the flag file is deleted afterwards. See dumptree.sh.
 //   files/repaint    -> every top-level window repaints completely (tells stale-paint bugs from layout bugs).
+//   files/raise      -> every shown dialog is raised (tells z-order bugs from paint bugs).
 #include <wx/app.h>
 #include <wx/module.h>
 #include <wx/timer.h>
@@ -147,6 +148,19 @@ public:
                 if (QWidget *q = tlw->GetHandle())
                     q->repaint();
             __android_log_write(ANDROID_LOG_INFO, "prusa-tree", "REPAINTED");
+        }
+        const std::string raise = std::string(home) + "/raise";
+        if (std::FILE *f = std::fopen(raise.c_str(), "r")) {
+            std::fclose(f);
+            std::remove(raise.c_str());
+            for (wxWindow *tlw : wxTopLevelWindows)
+                if (QWidget *q = tlw->GetHandle(); q && q->isVisible() && tlw != wxTheApp->GetTopWindow()) {
+                    q->raise();
+                    if (QWindow *w = q->windowHandle())
+                        w->raise();
+                    __android_log_print(ANDROID_LOG_INFO, "prusa-tree", "RAISED %s", q->metaObject()->className());
+                }
+            __android_log_write(ANDROID_LOG_INFO, "prusa-tree", "RAISE END");
         }
     }
 };

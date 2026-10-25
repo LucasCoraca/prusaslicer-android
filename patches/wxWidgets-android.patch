@@ -1229,10 +1229,10 @@ index 94b0718..3f9c1f9 100644
  
  wxAnyButton::State wxAnyButton::QtGetCurrentState() const
 diff --git a/src/qt/app.cpp b/src/qt/app.cpp
-index 9521282..c1c4e75 100644
+index 9521282..2a3ef1a 100644
 --- a/src/qt/app.cpp
 +++ b/src/qt/app.cpp
-@@ -14,7 +14,179 @@
+@@ -14,7 +14,226 @@
  #include "wx/qt/private/utils.h"
  #include "wx/qt/private/converter.h"
  #include <QtCore/QStringList>
@@ -1243,15 +1243,62 @@ index 9521282..c1c4e75 100644
 +#include <QtGui/QTouchEvent>
 +#ifdef __ANDROID__
 +#include <QtGui/private/qeventpoint_p.h> // QMutableEventPoint
++#include <QtWidgets/QProxyStyle>
 +#endif
 +#include <QtGui/QWindow>
 +#include <QtWidgets/QComboBox>
 +#include <QtCore/QPointer>
++#include <QtCore/QTimer>
 +#include <QtGui/QGuiApplication>
 +#include <QtGui/QInputMethod>
 +#include <QtWidgets/QWidget>
 +
 +#ifdef __ANDROID__
++// Touch screens: check box and radio button indicators (also those in list and tree items) big enough to hit with
++// a finger; the desktop styles draw them at 13 px, about 2 mm on a phone.
++class wxQtAndroidTouchStyle : public QProxyStyle
++{
++public:
++    int pixelMetric(PixelMetric metric, const QStyleOption* option, const QWidget* widget) const override
++    {
++        const int value = QProxyStyle::pixelMetric(metric, option, widget);
++        switch ( metric )
++        {
++            case PM_IndicatorWidth:
++            case PM_IndicatorHeight:
++            case PM_ExclusiveIndicatorWidth:
++            case PM_ExclusiveIndicatorHeight:
++                return wxMax(value, 20);
++            default:
++                return value;
++        }
++    }
++};
++
++// Qt's Android plugin ignores Qt::WindowStaysOnTopHint, and raises every window it activates: a stay-on-top
++// window (PrusaSlicer's search results under the search field) went behind the main window as soon as the
++// field took the focus. Raise such windows again after any other window was activated.
++class wxQtAndroidStayOnTopFix : public QObject
++{
++protected:
++    bool eventFilter(QObject* obj, QEvent* event) override
++    {
++        if ( event->type() == QEvent::WindowActivate && obj->isWidgetType()
++             && static_cast<QWidget*>(obj)->isWindow() )
++        {
++            for ( QWidget* top : QApplication::topLevelWidgets() )
++            {
++                if ( top != obj && top->isVisible() && (top->windowFlags() & Qt::WindowStaysOnTopHint) )
++                {
++                    QPointer<QWidget> guard(top);
++                    QTimer::singleShot(0, top, [guard] { if ( guard && guard->isVisible() ) guard->raise(); });
++                }
++            }
++        }
++        return false;
++    }
++};
++
 +// Qt's Android plugin (6.8) maps pointer events for every top-level window except the one at the origin
 +// (menus, combo/dropdown popups, dialogs) to a position that is off by the window's position divided by
 +// the device pixel ratio (verified at DPR 2 and DPR 1). The main window sits at (0, 0), so only secondary windows are affected. Undo the
@@ -1412,7 +1459,7 @@ index 9521282..c1c4e75 100644
  #include <QSurfaceFormat>
  
  #include <algorithm>
-@@ -38,9 +210,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -38,9 +257,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
  
      wxConvCurrent = &wxConvUTF8;
  
@@ -1431,7 +1478,7 @@ index 9521282..c1c4e75 100644
      QSurfaceFormat::setDefaultFormat(format);
  
      const int argcA = argc_;
-@@ -62,7 +242,22 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -62,7 +289,24 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
      // of the QApplication object. In addition, argc must be greater than zero and argv must
      // contain at least one valid character string.
  
@@ -1450,6 +1497,8 @@ index 9521282..c1c4e75 100644
 +    m_qtApplication->installEventFilter(new wxQtAndroidSecondaryWindowPaintFix);
 +    new wxQtAndroidKeyboardAvoider; // lives as long as the app
 +    m_qtApplication->installEventFilter(new wxQtAndroidComboTapFix);
++    m_qtApplication->setStyle(new wxQtAndroidTouchStyle); // a proxy of the default style, owned by the app
++    m_qtApplication->installEventFilter(new wxQtAndroidStayOnTopFix);
 +#endif
  
      if ( m_qtApplication->platformName() == "xcb" )
@@ -2483,6 +2532,23 @@ index 0279f3a..bdf4eb1 100644
  void wxStaticText::WXSetVisibleLabel(const wxString& label)
  {
      GetQLabel()->setText( wxQtConvertString( label ) );
+diff --git a/src/qt/textctrl.cpp b/src/qt/textctrl.cpp
+index d2c3678..4dbb160 100644
+--- a/src/qt/textctrl.cpp
++++ b/src/qt/textctrl.cpp
+@@ -866,6 +866,12 @@ bool wxTextCtrl::Create(wxWindow *parent,
+ 
+     m_qtWindow = m_qtEdit->GetHandle();
+ 
++#ifdef __ANDROID__
++    // Soft keyboards hold a predicted word as uncommitted text, which neither GetValue() nor wxEVT_TEXT see until
++    // it is committed (search-as-you-type got nothing). Values, names and G-code want no prediction anyway.
++    m_qtWindow->setInputMethodHints(m_qtWindow->inputMethodHints() | Qt::ImhNoPredictiveText);
++#endif
++
+     // set the initial text value without sending the event
+     ChangeValue( value );
+ 
 diff --git a/src/qt/toplevel.cpp b/src/qt/toplevel.cpp
 index 2c3fed1..495de6e 100644
 --- a/src/qt/toplevel.cpp
@@ -3184,7 +3250,7 @@ index 0000000..475a771
 +
 +#endif // wxUSE_WEBVIEW && __WXQT__ && __ANDROID__
 diff --git a/src/qt/window.cpp b/src/qt/window.cpp
-index ebc661e..c07a6c6 100644
+index ebc661e..f3a8e80 100644
 --- a/src/qt/window.cpp
 +++ b/src/qt/window.cpp
 @@ -20,6 +20,11 @@
@@ -3315,7 +3381,19 @@ index ebc661e..c07a6c6 100644
  }
  
  // Helper function to refresh the intersection area of the widget _widget_
-@@ -1253,6 +1310,28 @@ void wxWindowQt::DoSetSize(int x, int y, int width, int height, int sizeFlags )
+@@ -870,6 +927,11 @@ void wxWindowQt::ScrollWindow( int dx, int dy, const wxRect *rect )
+         widget->scroll( dx, dy, wxQtConvertRect( *rect ));
+     else
+         widget->scroll( dx, dy );
++#ifdef __ANDROID__
++    // On Android the pixels Qt moves when scrolling (with a DPR 2 phone screen) leave stale strips of the old
++    // contents and of the moved children: repaint the whole viewport instead.
++    widget->update();
++#endif
+ }
+ 
+ void wxWindowQt::SetLayoutDirection(wxLayoutDirection dir)
+@@ -1253,6 +1315,28 @@ void wxWindowQt::DoSetSize(int x, int y, int width, int height, int sizeFlags )
  
      DoMoveWindow( x, y, width, height );
  
@@ -3344,7 +3422,7 @@ index ebc661e..c07a6c6 100644
      // An annoying feature of Qt
      // if a control is created with size of zero, it is set as hidden by qt
      // if it is then resized, in some cases it remains hidden, so it
-@@ -1394,6 +1473,11 @@ void wxWindowQt::SetAcceleratorTable( const wxAcceleratorTable& accel )
+@@ -1394,6 +1478,11 @@ void wxWindowQt::SetAcceleratorTable( const wxAcceleratorTable& accel )
      {
          delete *it;
      }
@@ -3356,7 +3434,7 @@ index ebc661e..c07a6c6 100644
  
      m_qtShortcuts = accel.ConvertShortcutTable(GetHandle());
  
-@@ -1425,14 +1509,19 @@ bool wxWindowQt::QtSetBackgroundStyle()
+@@ -1425,14 +1514,19 @@ bool wxWindowQt::QtSetBackgroundStyle()
      {
          if (m_backgroundStyle == wxBG_STYLE_PAINT)
          {
@@ -3381,7 +3459,7 @@ index ebc661e..c07a6c6 100644
          }
          else if (m_backgroundStyle == wxBG_STYLE_SYSTEM)
          {
-@@ -1444,8 +1533,10 @@ bool wxWindowQt::QtSetBackgroundStyle()
+@@ -1444,8 +1538,10 @@ bool wxWindowQt::QtSetBackgroundStyle()
          }
          else if (m_backgroundStyle == wxBG_STYLE_ERASE)
          {
@@ -3394,7 +3472,7 @@ index ebc661e..c07a6c6 100644
              // Qt should not clear the background (default):
              widget->setAutoFillBackground(false);
          }
-@@ -1474,8 +1565,24 @@ void wxQtChangeRoleColour(QPalette::ColorRole role,
+@@ -1474,8 +1570,24 @@ void wxQtChangeRoleColour(QPalette::ColorRole role,
                            QWidget* widget,
                            const wxColour& colour)
  {
@@ -3420,7 +3498,7 @@ index ebc661e..c07a6c6 100644
      widget->setPalette(palette);
  }
  
-@@ -1486,6 +1593,10 @@ bool wxWindowQt::SetBackgroundColour(const wxColour& colour)
+@@ -1486,6 +1598,10 @@ bool wxWindowQt::SetBackgroundColour(const wxColour& colour)
      if ( !wxWindowBase::SetBackgroundColour(colour) )
          return false;
  
@@ -3431,7 +3509,7 @@ index ebc661e..c07a6c6 100644
      if ( colour.IsOk() )
      {
          QWidget *widget = QtGetParentWidget();
-@@ -1500,6 +1611,9 @@ bool wxWindowQt::SetForegroundColour(const wxColour& colour)
+@@ -1500,6 +1616,9 @@ bool wxWindowQt::SetForegroundColour(const wxColour& colour)
      if (!wxWindowBase::SetForegroundColour(colour))
          return false;
  
@@ -3441,7 +3519,7 @@ index ebc661e..c07a6c6 100644
      QWidget *widget = QtGetParentWidget();
      wxQtChangeRoleColour(widget->foregroundRole(), widget, colour);
  
-@@ -2134,6 +2248,13 @@ bool wxWindowQt::EnableTouchEvents(int eventsMask)
+@@ -2134,6 +2253,13 @@ bool wxWindowQt::EnableTouchEvents(int eventsMask)
  {
      wxCHECK_MSG( GetHandle(), false, "can't be called before creating the window" );
  

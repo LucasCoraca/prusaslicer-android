@@ -1,7 +1,7 @@
 # Test log (Android)
 
-Every feature is tested by hand on the emulator (`orcatest` AVD, emulator-5580, 2560x1600 tablet at DPR 2) by
-tapping through the UI; phone layout and arm64 hardware follow. Helpers: `run-app.sh` (install, launch, screenshot,
+Every feature is tested by hand on the emulator (`pstab` tablet and `psphone` phone AVDs, emulator-5580) by tapping
+through the UI; arm64 hardware follows. Helpers: `run-app.sh` (install, launch, screenshot,
 backtrace), `dumptree.sh` (wx window tree with Qt geometry), `files/loglevel` and `files/repaint` debug triggers
 (see android/app/bootstrap.cpp, android/app/debugtools.cpp).
 
@@ -57,6 +57,31 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Filaments tab, colour picker (QColorDialog), modified marker | ✅ | dialogs were at the top-left: now centred when first shown |
 | Printers tab, Bed shape dialog (2D preview, Shape choice, Circular) | ✅ | native combo boxes never opened on tap: now open on release |
 | Configuration menu, Preferences dialog: check boxes, tabs | ✅ | taps lost in dialogs with scroll areas: touch points carried the window offset |
+
+## Phone layout (`psphone` AVD, 720x1520 at DPR 2 = 360x760 dp)
+Phones (smaller screen side under 600 dp, `PhoneLayout.hpp`; `PS_LAYOUT=phone|tablet` forces one) get a narrow-screen
+layout of the same GUI.
+
+| Feature | x86_64 emulator | Notes |
+|---|---|---|
+| Top bar: icon buttons (menu, pages, mode, account), search field below | ✅ | landscape: search in the button row |
+| Plater portrait: 3D view above the sidebar (42 %, scrolls) | ✅ | collapse button always shown |
+| Plater landscape: sidebar on the right, at most half the width | ✅ | |
+| Settings tabs portrait: preset combo above its buttons, page drop-down instead of the tree | ✅ | |
+| Settings tabs landscape: desktop arrangement (tree beside page) | ✅ | switches on rotation |
+| Option labels wrap (13 em), description texts wrap (28 em) | ✅ | |
+| Multi-option rows (Solid layers Top/Bottom, temperatures) one option per row | ✅ | |
+| Search: type, results list, jump to option | ✅ | results went behind the main window (Qt Android ignores stay-on-top); keyboard held words uncommitted (predictive text) |
+| Configuration Wizard full screen, no page index, texts wrapped, 2 printers per row, 2x2 filament lists | ✅ | |
+| Wizard first run on a fresh device, profile download, Finish | ✅ | |
+| Wizard / scrolled pages repaint | ✅ | scroll blits and page switches left stale strips at DPR 2: full repaint |
+| Import STL through the Android picker, object manipulation panel | ✅ | |
+| Slice, preview, legend | ✅ | legend starts collapsed |
+| Preferences: wrapped labels, left-aligned fields | ✅ | check boxes were pushed off screen by right alignment |
+| Check box / radio indicators | ✅ | 20 dp minimum on Android (proxy style) |
+| Desktop app update check and system info dialog | ✅ | disabled on Android |
+| Profile download progress dialog | ⚠️ | gauge wider than the screen (cosmetic) |
+| Wide combo boxes / long side texts in settings | ⚠️ | page scrolls sideways a little |
 
 ## Test environment note
 Tests now run on `pstab` (1280x800, DPR 1, made by avdmanager into avd/): ~2.6 GB of host RAM with PrusaSlicer running.
