@@ -40,7 +40,8 @@ qt_add_executable(prusaslicer
     ${_src}/CLI/Run.cpp
     ${_src}/CLI/ProfilesSharingUtils.cpp
     ${_src}/CLI/GuiParams.cpp
-    bootstrap.cpp)
+    bootstrap.cpp
+    debugtools.cpp)
 add_dependencies(prusaslicer ps_resources_zip)
 
 target_include_directories(prusaslicer PRIVATE ${_src} ${_src}/libslic3r)

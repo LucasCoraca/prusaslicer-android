@@ -16736,6 +16736,20 @@ index 0845799..dfd6be3 100644
      std::string distro_id = wxGetLinuxDistributionInfo().Id.ToUTF8().data(); // uses lsb-release
      std::string distro_ver = wxGetLinuxDistributionInfo().Release.ToUTF8().data();
      if (distro_id.empty()) { // lsb-release probably not available
+diff --git a/src/slic3r/GUI/WebView.cpp b/src/slic3r/GUI/WebView.cpp
+index 9048f9b..4048a61 100644
+--- a/src/slic3r/GUI/WebView.cpp
++++ b/src/slic3r/GUI/WebView.cpp
+@@ -14,6 +14,9 @@ wxWebView* WebView::webview_new()
+ {
+ #if wxUSE_WEBVIEW_EDGE
+     bool backend_available = wxWebView::IsBackendAvailable(wxWebViewBackendEdge);
++#elif defined(__ANDROID__)
++    // android.webkit.WebView behind wxWebViewAndroid (third_party/wxWidgets/src/qt/webview_android.cpp)
++    bool backend_available = wxWebView::IsBackendAvailable(wxWebViewBackendAndroid);
+ #else
+     bool backend_available = wxWebView::IsBackendAvailable(wxWebViewBackendWebKit);
+ #endif
 diff --git a/src/slic3r/GUI/WebViewPlatformUtilsAndroid.cpp b/src/slic3r/GUI/WebViewPlatformUtilsAndroid.cpp
 new file mode 100644
 index 0000000..a814702

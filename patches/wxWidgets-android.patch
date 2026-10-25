@@ -266,6 +266,20 @@ index 8f7f88f..c9add8c 100644
  
  class wxSecretValueGenericImpl : public wxSecretValueImpl
  {
+diff --git a/include/wx/qt/dc.h b/include/wx/qt/dc.h
+index 708b849..7eaa414 100644
+--- a/include/wx/qt/dc.h
++++ b/include/wx/qt/dc.h
+@@ -47,6 +47,9 @@ public:
+ 
+     virtual wxCoord GetCharHeight() const override;
+     virtual wxCoord GetCharWidth() const override;
++    // Qt's own advances (with kerning) for every prefix: the generic per-character sum comes out shorter than
++    // what QLabel draws, so text wrapped with it (wxStaticText::Wrap) was clipped
++    virtual bool DoGetPartialTextExtents(const wxString& text, wxArrayInt& widths) const override;
+     virtual void DoGetTextExtent(const wxString& string,
+                                  wxCoord *x, wxCoord *y,
+                                  wxCoord *descent = nullptr,
 diff --git a/include/wx/qt/dvrenderers.h b/include/wx/qt/dvrenderers.h
 index dc57dc3..ccda993 100644
 --- a/include/wx/qt/dvrenderers.h
@@ -366,6 +380,21 @@ index 8933a1a..b6bc935 100644
          else
              event->accept();
      }
+diff --git a/include/wx/qt/stattext.h b/include/wx/qt/stattext.h
+index eab30a2..b99bb2a 100644
+--- a/include/wx/qt/stattext.h
++++ b/include/wx/qt/stattext.h
+@@ -38,6 +38,10 @@ public:
+     QLabel* GetQLabel() const;
+ 
+ protected:
++    // never smaller than what QLabel needs to draw the text: wx's text extents can come out a few pixels short of
++    // QLabel's layout (seen with wrapped labels at DPR 2), which clipped the last characters
++    virtual wxSize DoGetBestSize() const override;
++
+     virtual wxString WXGetVisibleLabel() const override;
+     virtual void WXSetVisibleLabel(const wxString& str) override;
+ 
 diff --git a/include/wx/qt/toplevel.h b/include/wx/qt/toplevel.h
 index a544e9c..bce2827 100644
 --- a/include/wx/qt/toplevel.h
@@ -1156,10 +1185,10 @@ index 0000000..fcc98a7
 +    }
 +}
 diff --git a/src/qt/app.cpp b/src/qt/app.cpp
-index 9521282..1f282de 100644
+index 9521282..59ed8ff 100644
 --- a/src/qt/app.cpp
 +++ b/src/qt/app.cpp
-@@ -14,7 +14,54 @@
+@@ -14,7 +14,72 @@
  #include "wx/qt/private/utils.h"
  #include "wx/qt/private/converter.h"
  #include <QtCore/QStringList>
@@ -1169,6 +1198,7 @@ index 9521282..1f282de 100644
 +#include <QtGui/QMouseEvent>
 +#include <QtGui/QTouchEvent>
 +#include <QtGui/QWindow>
++#include <QtWidgets/QWidget>
 +
 +#ifdef __ANDROID__
 +// Qt's Android plugin (6.8) maps pointer events for every top-level window except the one at the origin
@@ -1210,11 +1240,28 @@ index 9521282..1f282de 100644
 +private:
 +    bool m_resending = false;
 +};
++
++// The same plugin flushes a partial repaint of such a window to the wrong place: only part of the dirty
++// rectangle reaches the screen and the rest keeps the old pixels (a wizard page switch showed half of the
++// previous page). Full-window flushes are right, so widen every repaint of a secondary window to all of it.
++class wxQtAndroidSecondaryWindowPaintFix : public QObject
++{
++protected:
++    bool eventFilter(QObject* obj, QEvent* event) override
++    {
++        if ( event->type() != QEvent::UpdateRequest || !obj->isWidgetType() )
++            return false;
++        QWidget* const widget = static_cast<QWidget*>(obj);
++        if ( widget->isWindow() && !widget->pos().isNull() )
++            widget->update(); // marks everything dirty for the sync this request is about to run; no new request
++        return false;
++    }
++};
 +#endif // __ANDROID__
  #include <QSurfaceFormat>
  
  #include <algorithm>
-@@ -38,9 +85,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -38,9 +103,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
  
      wxConvCurrent = &wxConvUTF8;
  
@@ -1233,7 +1280,7 @@ index 9521282..1f282de 100644
      QSurfaceFormat::setDefaultFormat(format);
  
      const int argcA = argc_;
-@@ -62,7 +117,19 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -62,7 +135,20 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
      // of the QApplication object. In addition, argc must be greater than zero and argv must
      // contain at least one valid character string.
  
@@ -1249,6 +1296,7 @@ index 9521282..1f282de 100644
      m_qtApplication.reset(new QApplication(argc_, argvA));
 +#ifdef __ANDROID__
 +    m_qtApplication->installEventFilter(new wxQtAndroidSecondaryWindowInputFix);
++    m_qtApplication->installEventFilter(new wxQtAndroidSecondaryWindowPaintFix);
 +#endif
  
      if ( m_qtApplication->platformName() == "xcb" )
@@ -1316,18 +1364,20 @@ index 32789f2..2800f8a 100644
  }
  
 diff --git a/src/qt/dc.cpp b/src/qt/dc.cpp
-index 9ffcb2d..caed82d 100644
+index 9ffcb2d..b9098a6 100644
 --- a/src/qt/dc.cpp
 +++ b/src/qt/dc.cpp
-@@ -13,6 +13,7 @@
+@@ -13,6 +13,9 @@
  #include <QtGui/QPen>
  #include <QtGui/QPainter>
  #include <QtGui/QPainterPath>
 +#include <QtGui/QPaintEngine>
++#include <QtGui/QFontMetricsF>
++#include <QtCore/QtMath>
  
  #ifndef WX_PRECOMP
      #include "wx/icon.h"
-@@ -295,7 +296,9 @@ void wxQtDCImpl::SetPalette(const wxPalette& WXUNUSED(palette))
+@@ -295,7 +298,9 @@ void wxQtDCImpl::SetPalette(const wxPalette& WXUNUSED(palette))
  wxPoint wxQtDCImpl::DeviceToLogical(wxCoord x, wxCoord y) const
  {
      QPointF devicePoint(x, y);
@@ -1338,7 +1388,7 @@ index 9ffcb2d..caed82d 100644
      QPointF logicalPoint = invTrans.map(devicePoint);
      return wxPoint(wxRound(logicalPoint.x()), wxRound(logicalPoint.y()));
  }
-@@ -303,7 +306,7 @@ wxPoint wxQtDCImpl::DeviceToLogical(wxCoord x, wxCoord y) const
+@@ -303,7 +308,7 @@ wxPoint wxQtDCImpl::DeviceToLogical(wxCoord x, wxCoord y) const
  wxPoint wxQtDCImpl::LogicalToDevice(wxCoord x, wxCoord y) const
  {
      QPointF logicalPoint(x, y);
@@ -1347,6 +1397,28 @@ index 9ffcb2d..caed82d 100644
      return wxPoint(wxRound(devicePoint.x()), wxRound(devicePoint.y()));
  }
  
+@@ -489,6 +494,21 @@ void wxQtDCImpl::DoGetTextExtent(const wxString& string,
+         *externalLeading = metrics.leading();
+ }
+ 
++bool wxQtDCImpl::DoGetPartialTextExtents(const wxString& text, wxArrayInt& widths) const
++{
++    const QFontMetricsF metrics(m_font.GetHandle());
++    widths.clear();
++    widths.reserve(text.length());
++    // one entry per wx character (a code point; QString may need two UTF-16 units for it)
++    QString prefix;
++    for ( wxString::const_iterator it = text.begin(); it != text.end(); ++it )
++    {
++        prefix += wxQtConvertString(wxString(*it));
++        widths.push_back(qCeil(metrics.horizontalAdvance(prefix)));
++    }
++    return true;
++}
++
+ void wxQtDCImpl::Clear()
+ {
+     int width, height;
 diff --git a/src/qt/dcclient.cpp b/src/qt/dcclient.cpp
 index 675d127..caca55a 100644
 --- a/src/qt/dcclient.cpp
@@ -2164,6 +2236,25 @@ index 0000000..10bac8f
 +}
 +
 +#endif // wxUSE_SECRETSTORE && __WXQT__ && __ANDROID__
+diff --git a/src/qt/stattext.cpp b/src/qt/stattext.cpp
+index 0279f3a..bdf4eb1 100644
+--- a/src/qt/stattext.cpp
++++ b/src/qt/stattext.cpp
+@@ -107,6 +107,14 @@ void wxStaticText::SetLabel(const wxString& label)
+     AutoResizeIfNecessary();
+ }
+ 
++wxSize wxStaticText::DoGetBestSize() const
++{
++    wxSize best = wxStaticTextBase::DoGetBestSize();
++    const QSize hint = GetQLabel()->sizeHint();
++    best.IncTo(wxSize(hint.width(), hint.height()));
++    return best;
++}
++
+ void wxStaticText::WXSetVisibleLabel(const wxString& label)
+ {
+     GetQLabel()->setText( wxQtConvertString( label ) );
 diff --git a/src/qt/toplevel.cpp b/src/qt/toplevel.cpp
 index 2c3fed1..e3454db 100644
 --- a/src/qt/toplevel.cpp
@@ -2287,10 +2378,10 @@ index 2c3fed1..e3454db 100644
 +#endif // __ANDROID__
 diff --git a/src/qt/webview_android.cpp b/src/qt/webview_android.cpp
 new file mode 100644
-index 0000000..7a3df45
+index 0000000..475a771
 --- /dev/null
 +++ b/src/qt/webview_android.cpp
-@@ -0,0 +1,468 @@
+@@ -0,0 +1,469 @@
 +/////////////////////////////////////////////////////////////////////////////
 +// Name:        src/qt/webview_android.cpp
 +// Purpose:     wxWebView backend on top of android.webkit.WebView (wxQt on Android)
@@ -2304,6 +2395,7 @@ index 0000000..7a3df45
 +#include "wx/qt/webview_android.h"
 +#include "wx/private/webview.h"
 +#include "wx/qt/private/converter.h"
++#include <android/log.h>
 +#include "wx/log.h"
 +#include "wx/app.h"
 +
