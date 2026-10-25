@@ -9,6 +9,7 @@
 #include <wx/window.h>
 
 #include <QtWidgets/QLabel>
+#include <QtWidgets/QListWidget>
 #include <QtWidgets/QWidget>
 #include <QtGui/QFontMetrics>
 
@@ -29,6 +30,12 @@ void dump(wxWindow *w, int depth)
         const QRect g = q->geometry();
         qt = std::to_string(g.x()) + "," + std::to_string(g.y()) + " " + std::to_string(g.width()) + "x" + std::to_string(g.height())
             + (q->isVisible() ? " vis" : " hid") + (q->isVisibleTo(q->window()) ? "" : "(to-window:hid)");
+        if (QListWidget *lw = qobject_cast<QListWidget*>(q)) {
+            qt += " list[count=" + std::to_string(lw->count()) + " updates=" + (lw->updatesEnabled() ? "on" : "OFF");
+            for (int i = 0; i < std::min(lw->count(), 4); ++i)
+                qt += " '" + lw->item(i)->text().toStdString() + "'";
+            qt += "]";
+        }
         if (QLabel *l = qobject_cast<QLabel*>(q)) {
             int wx_w = 0, wx_h = 0;
             w->GetTextExtent(w->GetLabel(), &wx_w, &wx_h);

@@ -25,3 +25,5 @@ Legend: ✅ works · ⚠️ works with issues · ❌ broken · ⏳ not tested ye
 | Wizard: pick a printer (XL 5T 0.4) | ✅ | crashed in QScrollArea::ensureWidgetVisible (wxQt scroll area) |
 | Wizard: page index overlaps the logo when many pages | ⚠️ | cosmetic |
 | Small native check boxes (~14 px) | ⚠️ | hard to hit with a finger |
+| Wizard: filaments page, type/vendor filter | ✅ | filtered by the previous item (wxEVT_LISTBOX before selection) |
+| Wizard: filament check list toggle | ✅ | |

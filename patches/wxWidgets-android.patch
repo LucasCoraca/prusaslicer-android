@@ -2159,6 +2159,43 @@ index b3cadb8..b530741 100644
      return true;
  }
  
+diff --git a/src/qt/listbox.cpp b/src/qt/listbox.cpp
+index 4667e3f..0cfdcc4 100644
+--- a/src/qt/listbox.cpp
++++ b/src/qt/listbox.cpp
+@@ -13,6 +13,9 @@
+ #include "wx/listbox.h"
+ #include "wx/qt/private/winevent.h"
+ 
++#include <QtCore/QPointer>
++#include <QtCore/QTimer>
++
+ #include <QtWidgets/QListWidget>
+ 
+ // We need a way to generate wxEVT_CHECKLISTBOX events whenever the checkbox's
+@@ -51,12 +54,16 @@ void wxQtListWidget::OnCurrentItemChange(QListWidgetItem *current, QListWidgetIt
+     if ( !current )
+         return;
+ 
+-    wxListBox *handler = GetHandler();
+-    if ( handler )
+-    {
+-        const QModelIndex &index = indexFromItem(current);
+-        handler->QtSendEvent(wxEVT_LISTBOX, index.row(), true);
+-    }
++    // Qt emits currentItemChanged during the mouse press, before the selection model has selected the new item:
++    // a handler asking GetSelection() then still got the previous one (PrusaSlicer's wizard filtered by the old
++    // type). Send the event once the press is fully handled.
++    const int row = indexFromItem(current).row();
++    QPointer<wxQtListWidget> self(this);
++    QTimer::singleShot(0, this, [self, row] {
++        if ( self )
++            if ( wxListBox *handler = self->GetHandler() )
++                handler->QtSendEvent(wxEVT_LISTBOX, row, true);
++    });
+ }
+ 
+ void wxQtListWidget::doubleClicked( const QModelIndex &index )
 diff --git a/src/qt/secretstore_android.cpp b/src/qt/secretstore_android.cpp
 new file mode 100644
 index 0000000..10bac8f
