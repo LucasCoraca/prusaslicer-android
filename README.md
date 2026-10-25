@@ -4,7 +4,10 @@ PrusaSlicer 2.9.6 running on Android: the same libslic3r slicing engine and Prus
 built against wxWidgets-on-Qt for Android. This is the sister project of
 [orcaslicer-android](https://github.com/LucasCoraca/orcaslicer-android) and shares its Android wxWidgets port.
 
-Status: work in progress (dependencies and engine build for Android x86_64; GUI port under way).
+Status: preview. The full GUI runs on tablets and phones (x86_64 emulator tested, arm64 builds): setup wizard, import,
+slicing, preview, export, settings. Phones (smaller screen side under 600 dp) get a narrow-screen arrangement of the
+same GUI: icon top bar, 3D view above the sidebar, a page drop-down in the settings tabs, wrapped labels and dialogs;
+in landscape the desktop arrangement comes back. See [TESTING.md](TESTING.md).
 
 ## How it works
 - **Engine**: PrusaSlicer's dependency superbuild cross-compiled with the NDK (`deps/deps-android.cmake` in the patch).
