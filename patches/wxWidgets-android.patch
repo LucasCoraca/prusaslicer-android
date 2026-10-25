@@ -2427,7 +2427,7 @@ index 0279f3a..bdf4eb1 100644
  {
      GetQLabel()->setText( wxQtConvertString( label ) );
 diff --git a/src/qt/toplevel.cpp b/src/qt/toplevel.cpp
-index 2c3fed1..7d40778 100644
+index 2c3fed1..b1f86d0 100644
 --- a/src/qt/toplevel.cpp
 +++ b/src/qt/toplevel.cpp
 @@ -10,8 +10,26 @@
@@ -2457,7 +2457,7 @@ index 2c3fed1..7d40778 100644
  
  wxTopLevelWindowQt::wxTopLevelWindowQt(wxWindow *parent,
             wxWindowID winId,
-@@ -48,46 +66,78 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
+@@ -48,46 +66,87 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
  
  bool wxTopLevelWindowQt::Show(bool show)
  {
@@ -2465,7 +2465,16 @@ index 2c3fed1..7d40778 100644
 +    // fit (frames: fill) the screen even if the geometry was set before any of the clamping could apply
 +    if ( show )
 +    {
-+        const wxRect rect = GetRect();
++        wxRect rect = GetRect();
++        // No window manager places new windows on Android: a dialog nobody positioned sits at the screen origin.
++        // Centre it, as a desktop window manager would.
++        const QRect area = wxQtAvailableScreenArea();
++        if ( wxDynamicCast(this, wxDialog) && rect.GetPosition() == wxPoint(area.x(), area.y())
++             && rect.width < area.width() && rect.height < area.height() )
++        {
++            rect.x = area.x() + (area.width() - rect.width) / 2;
++            rect.y = area.y() + (area.height() - rect.height) / 2;
++        }
 +        DoSetSize(rect.x, rect.y, rect.width, rect.height, wxSIZE_ALLOW_MINUS_ONE);
 +        if ( !wxDynamicCast(this, wxDialog) )
 +            GetHandle()->setWindowState(GetHandle()->windowState() | Qt::WindowFullScreen);
@@ -2553,7 +2562,7 @@ index 2c3fed1..7d40778 100644
  }
  
  bool wxTopLevelWindowQt::IsMaximized() const
-@@ -245,6 +295,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -245,6 +304,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
      minW = wxMax(0, minW);
      minH = wxMax(0, minH);
  
@@ -2568,7 +2577,7 @@ index 2c3fed1..7d40778 100644
      incW = wxMax(0, incW);
      incH = wxMax(0, incH);
  
-@@ -254,3 +312,48 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -254,3 +321,48 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
  
      wxTopLevelWindowBase::DoSetSizeHints(minW, minH, maxW, maxH, incW, incH);
  }
