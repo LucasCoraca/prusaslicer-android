@@ -653,6 +653,40 @@ index 9b9f4e4..2699c7f 100644
 +
  #endif // wxUSE_GLCANVAS
  
+diff --git a/src/common/stattextcmn.cpp b/src/common/stattextcmn.cpp
+index a642302..2af8627 100644
+--- a/src/common/stattextcmn.cpp
++++ b/src/common/stattextcmn.cpp
+@@ -261,8 +261,6 @@ void wxStaticTextBase::Wrap(int width)
+     if (width == m_currentWrap)
+         return;
+ 
+-    m_currentWrap = width;
+-
+     // Allow for repeated calls to Wrap() with different values by storing the
+     // original label, before wrapping it. We also need to preserve the value
+     // of the unwrapped label if it's already set because the calls to
+@@ -279,6 +277,8 @@ void wxStaticTextBase::Wrap(int width)
+     InvalidateBestSize();
+ 
+     m_unwrappedLabel = unwrappedLabel;
++    // (set last: the SetLabel() calls above reset it)
++    m_currentWrap = width;
+ }
+ 
+ wxSize
+@@ -359,8 +359,10 @@ bool wxStaticTextBase::UpdateLabelOrig(const wxString& label)
+     m_labelOrig = label;
+ 
+     // We need to clear the existing unwrapped label as it doesn't correspond
+-    // to the new value of the actual label any longer.
++    // to the new value of the actual label any longer, and the new label is
++    // not wrapped yet: a following Wrap() with the same width must wrap it.
+     m_unwrappedLabel.clear();
++    m_currentWrap = 0;
+ 
+     return true;
+ }
 diff --git a/src/common/webview.cpp b/src/common/webview.cpp
 index dea61ba..3792503 100644
 --- a/src/common/webview.cpp
@@ -2550,10 +2584,10 @@ index d2c3678..4dbb160 100644
      ChangeValue( value );
  
 diff --git a/src/qt/toplevel.cpp b/src/qt/toplevel.cpp
-index 2c3fed1..495de6e 100644
+index 2c3fed1..80ed062 100644
 --- a/src/qt/toplevel.cpp
 +++ b/src/qt/toplevel.cpp
-@@ -10,8 +10,26 @@
+@@ -10,8 +10,28 @@
  
  #include "wx/toplevel.h"
  #include "wx/qt/private/converter.h"
@@ -2568,6 +2602,8 @@ index 2c3fed1..495de6e 100644
 +#include <QtGui/QGuiApplication>
 +#include <QtGui/QScreen>
 +#include "wx/dialog.h"
++#include "wx/sizer.h"
++#include "wx/stattext.h"
 +
 +// The screen area app windows use. Frames run full screen (see Show()), so this is the whole screen: with the
 +// window below the status bar, Qt maps touches on popup windows (menus, combo lists) one bar height off.
@@ -2580,8 +2616,35 @@ index 2c3fed1..495de6e 100644
  
  wxTopLevelWindowQt::wxTopLevelWindowQt(wxWindow *parent,
             wxWindowID winId,
-@@ -48,46 +66,89 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
+@@ -46,48 +66,129 @@ bool wxTopLevelWindowQt::Create( wxWindow *parent, wxWindowID winId,
+     return true;
+ }
  
++#ifdef __ANDROID__
++// Wrap the static texts of a window that do not fit into `right` (in the window's client coordinates).
++static void wxQtWrapTextsToWidth(wxWindow* top, wxWindow* win, int right)
++{
++    for ( wxWindow* child : win->GetChildren() )
++    {
++        if ( child->IsTopLevel() || !child->IsShown() )
++            continue;
++        if ( wxStaticText* text = wxDynamicCast(child, wxStaticText) )
++        {
++            const int left = top->ScreenToClient(text->GetScreenPosition()).x;
++            const int width = right - left;
++            if ( width > 50 && text->GetBestSize().x > width )
++            {
++                text->Wrap(width);
++                text->SetMinSize(wxDefaultSize);
++                text->InvalidateBestSize();
++            }
++        }
++        else
++            wxQtWrapTextsToWidth(top, child, right);
++    }
++}
++#endif // __ANDROID__
++
  bool wxTopLevelWindowQt::Show(bool show)
  {
 +#ifdef __ANDROID__
@@ -2593,6 +2656,19 @@ index 2c3fed1..495de6e 100644
 +        // centred before its final Fit() keeps the top-left of a tiny window. Centre dialogs when first shown, as a
 +        // desktop window manager would.
 +        const QRect area = wxQtAvailableScreenArea();
++        // A dialog laid out wider than a phone screen: wrap its texts and fit it again (buttons and fields keep
++        // their width).
++        if ( wxDynamicCast(this, wxDialog) && !GetHandle()->property("wxShownOnce").toBool() && GetSizer()
++             && GetSizer()->GetMinSize().x > area.width() )
++        {
++            wxQtWrapTextsToWidth(this, this, area.width() - 25);
++            const wxSize minSize = GetSizer()->GetMinSize();
++            SetMinSize(wxSize(wxMin(minSize.x, area.width()), wxMin(minSize.y, area.height())));
++            // (the height a program chose, like a wizard filling the screen, stays)
++            SetSize(wxSize(wxMin(GetSize().x, area.width()), wxMax(GetSize().y, GetMinSize().y)));
++            Layout();
++            rect = GetRect();
++        }
 +        if ( wxDynamicCast(this, wxDialog) && !GetHandle()->property("wxShownOnce").toBool()
 +             && rect.width < area.width() && rect.height < area.height() )
 +        {
@@ -2687,7 +2763,7 @@ index 2c3fed1..495de6e 100644
  }
  
  bool wxTopLevelWindowQt::IsMaximized() const
-@@ -245,6 +306,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -245,6 +346,14 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
      minW = wxMax(0, minW);
      minH = wxMax(0, minH);
  
@@ -2702,7 +2778,7 @@ index 2c3fed1..495de6e 100644
      incW = wxMax(0, incW);
      incH = wxMax(0, incH);
  
-@@ -254,3 +323,48 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
+@@ -254,3 +363,48 @@ void wxTopLevelWindowQt::DoSetSizeHints( int minW, int minH,
  
      wxTopLevelWindowBase::DoSetSizeHints(minW, minH, maxW, maxH, incW, incH);
  }

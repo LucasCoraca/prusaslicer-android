@@ -80,6 +80,15 @@ layout of the same GUI.
 | Preferences: wrapped labels, left-aligned fields | ✅ | check boxes were pushed off screen by right alignment |
 | Check box / radio indicators | ✅ | 20 dp minimum on Android (proxy style) |
 | Desktop app update check and system info dialog | ✅ | disabled on Android |
+| Context menu (long press), add/remove instance, move gizmo drag, collapse sidebar | ✅ | |
+| Physical printer dialog | ✅ | texts of too-wide dialogs wrap when first shown (wxQt) |
+| Compare presets dialog | ✅ | presets above each other |
+| Bed shape dialog | ✅ | preview above the settings |
+| Unsaved changes dialog (switch preset), Discard | ✅ | |
+| Description texts re-wrap after a value change | ✅ | wx 3.3 Wrap() skipped a new label with the same width |
+| Printables tab | ✅ | mobile site |
+| Workspace mode menu (Expert) | ✅ | menu button stayed highlighted (no wxEVT_MENU_CLOSE in wxQt) |
+| Dialog titles | ⚠️ | Android shows no window titles (e.g. Save preset has no heading) |
 | Profile download progress dialog | ⚠️ | gauge wider than the screen (cosmetic) |
 | Wide combo boxes / long side texts in settings | ⚠️ | page scrolls sideways a little |
 

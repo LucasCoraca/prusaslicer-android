@@ -617,6 +617,38 @@ index 71efa5d..a91bfcc 100644
      find_package(GTK${SLIC3R_GTK} REQUIRED)
      find_package(PkgConfig REQUIRED)
  
+diff --git a/src/slic3r/GUI/BedShapeDialog.cpp b/src/slic3r/GUI/BedShapeDialog.cpp
+index 9f8acb1..40c22ad 100644
+--- a/src/slic3r/GUI/BedShapeDialog.cpp
++++ b/src/slic3r/GUI/BedShapeDialog.cpp
+@@ -9,6 +9,7 @@
+ ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+ ///|/
+ #include "BedShapeDialog.hpp"
++#include "PhoneLayout.hpp"
+ #include "GUI_App.hpp"
+ #include "OptionsGroup.hpp"
+ 
+@@ -249,9 +250,18 @@ void BedShapePanel::build_panel(const ConfigOptionPoints& default_pt, const Conf
+     left_sizer->Add(texture_panel, 1, wxEXPAND);
+     left_sizer->Add(model_panel, 1, wxEXPAND);
+ 
+-    wxSizer* top_sizer = new wxBoxSizer(wxHORIZONTAL);
++    wxSizer* top_sizer;
++    if (is_phone_layout()) {
++        // phone layout: the preview above the settings
++        top_sizer = new wxBoxSizer(wxVERTICAL);
++        m_canvas->SetMinSize(wxSize(-1, 14 * wxGetApp().em_unit()));
++        top_sizer->Add(m_canvas, 0, wxEXPAND | wxLEFT | wxTOP | wxRIGHT, 10);
++        top_sizer->Add(left_sizer, 0, wxEXPAND | wxLEFT | wxRIGHT, 10);
++    } else {
++    top_sizer = new wxBoxSizer(wxHORIZONTAL);
+     top_sizer->Add(left_sizer, 0, wxEXPAND | wxLEFT | wxTOP | wxBOTTOM, 10);
+     top_sizer->Add(m_canvas, 1, wxEXPAND | wxALL, 10);
++    }
+ 
+ 	SetSizerAndFit(top_sizer);
+ 
 diff --git a/src/slic3r/GUI/ConfigWizard.cpp b/src/slic3r/GUI/ConfigWizard.cpp
 index 97fb0ec..257adf5 100644
 --- a/src/slic3r/GUI/ConfigWizard.cpp
@@ -2362,6 +2394,74 @@ index d43ce64..85fc350 100644
  };
  
  class TopBar : public wxBookCtrlBase
+diff --git a/src/slic3r/GUI/TopBarMenus.cpp b/src/slic3r/GUI/TopBarMenus.cpp
+index 87d4a95..fb64571 100644
+--- a/src/slic3r/GUI/TopBarMenus.cpp
++++ b/src/slic3r/GUI/TopBarMenus.cpp
+@@ -113,6 +113,14 @@ void TopBarMenus::Popup(TopBarItemsCtrl* popup_ctrl, wxMenu* menu, wxPoint pos)
+ {
+     m_popup_ctrl = popup_ctrl;
+     m_popup_ctrl->PopupMenu(menu, pos);
++#ifdef __ANDROID__
++    // wxQt sends no wxEVT_MENU_CLOSE for a popup menu; PopupMenu() returns when it closed
++    if (m_popup_ctrl) {
++        m_popup_ctrl->UnselectPopupButtons();
++        m_popup_ctrl->Refresh();
++    }
++    m_popup_ctrl = nullptr;
++#endif
+ }
+ 
+ void TopBarMenus::BindEvtClose()
+diff --git a/src/slic3r/GUI/UnsavedChangesDialog.cpp b/src/slic3r/GUI/UnsavedChangesDialog.cpp
+index 5556153..f483e64 100644
+--- a/src/slic3r/GUI/UnsavedChangesDialog.cpp
++++ b/src/slic3r/GUI/UnsavedChangesDialog.cpp
+@@ -5,6 +5,7 @@
+ ///|/ PrusaSlicer is released under the terms of the AGPLv3 or higher
+ ///|/
+ #include "UnsavedChangesDialog.hpp"
++#include "PhoneLayout.hpp"
+ 
+ #include <cstddef>
+ #include <string>
+@@ -1519,12 +1520,14 @@ void DiffPresetDialog::create_presets_sizer()
+     for (auto new_type : { Preset::TYPE_PRINT, Preset::TYPE_SLA_PRINT, Preset::TYPE_FILAMENT, Preset::TYPE_SLA_MATERIAL, Preset::TYPE_PRINTER })
+     {
+         const PresetCollection* collection = get_preset_collection(new_type);
+-        wxBoxSizer* sizer = new wxBoxSizer(wxHORIZONTAL);
++        // phone layout: the two presets above each other
++        const bool phone = is_phone_layout();
++        wxBoxSizer* sizer = new wxBoxSizer(phone ? wxVERTICAL : wxHORIZONTAL);
+         PresetComboBox* presets_left;
+         PresetComboBox* presets_right;
+         ScalableButton* equal_bmp = new ScalableButton(this, wxID_ANY, "equal");
+ 
+-        auto add_preset_combobox = [collection, sizer, new_type, this](PresetComboBox** cb_, PresetBundle* preset_bundle) {
++        auto add_preset_combobox = [collection, sizer, new_type, phone, this](PresetComboBox** cb_, PresetBundle* preset_bundle) {
+             *cb_ = new PresetComboBox(this, new_type, wxSize(em_unit() * 35, -1), preset_bundle);
+             PresetComboBox*cb = (*cb_);
+             cb->SetFont(this->GetFont());
+@@ -1540,13 +1543,16 @@ void DiffPresetDialog::create_presets_sizer()
+             if (collection->get_selected_idx() != (size_t)-1)
+                 cb->update(collection->get_selected_preset().name);
+ 
+-            sizer->Add(cb, 1);
++            if (phone)
++                sizer->Add(cb, 0, wxEXPAND);
++            else
++                sizer->Add(cb, 1);
+             cb->Show(new_type == Preset::TYPE_PRINTER);
+         };
+         add_preset_combobox(&presets_left, &m_preset_bundle_left);
+-        sizer->Add(equal_bmp, 0, wxRIGHT | wxLEFT | wxALIGN_CENTER_VERTICAL, 5);
++        sizer->Add(equal_bmp, 0, phone ? wxALL | wxALIGN_CENTER_HORIZONTAL : wxRIGHT | wxLEFT | wxALIGN_CENTER_VERTICAL, 5);
+         add_preset_combobox(&presets_right, &m_preset_bundle_right);
+-        m_presets_sizer->Add(sizer, 1, wxTOP, 5);
++        m_presets_sizer->Add(sizer, 1, phone ? wxTOP | wxEXPAND : wxTOP, 5);
+         equal_bmp->Show(new_type == Preset::TYPE_PRINTER);
+ 
+         m_preset_combos.push_back({ presets_left, equal_bmp, presets_right });
 diff --git a/src/slic3r/GUI/WebView.cpp b/src/slic3r/GUI/WebView.cpp
 index 9048f9b..4048a61 100644
 --- a/src/slic3r/GUI/WebView.cpp
