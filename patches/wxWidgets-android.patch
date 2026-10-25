@@ -1229,10 +1229,10 @@ index 94b0718..3f9c1f9 100644
  
  wxAnyButton::State wxAnyButton::QtGetCurrentState() const
 diff --git a/src/qt/app.cpp b/src/qt/app.cpp
-index 9521282..5896fdf 100644
+index 9521282..bd466a2 100644
 --- a/src/qt/app.cpp
 +++ b/src/qt/app.cpp
-@@ -14,7 +14,72 @@
+@@ -14,7 +14,123 @@
  #include "wx/qt/private/utils.h"
  #include "wx/qt/private/converter.h"
  #include <QtCore/QStringList>
@@ -1242,6 +1242,9 @@ index 9521282..5896fdf 100644
 +#include <QtGui/QMouseEvent>
 +#include <QtGui/QTouchEvent>
 +#include <QtGui/QWindow>
++#include <QtCore/QPointer>
++#include <QtGui/QGuiApplication>
++#include <QtGui/QInputMethod>
 +#include <QtWidgets/QWidget>
 +
 +#ifdef __ANDROID__
@@ -1301,11 +1304,59 @@ index 9521282..5896fdf 100644
 +        return false;
 +    }
 +};
++
++// The soft keyboard covers the lower part of the screen; Qt resizes nothing for top-level dialogs, so a text field
++// in a dialog (and its OK button) could end up under it. Move the dialog of the focused widget up while the
++// keyboard is shown, back when it hides.
++class wxQtAndroidKeyboardAvoider : public QObject
++{
++public:
++    wxQtAndroidKeyboardAvoider()
++    {
++        connect(QGuiApplication::inputMethod(), &QInputMethod::keyboardRectangleChanged, this, [this] { Update(); });
++        connect(QGuiApplication::inputMethod(), &QInputMethod::visibleChanged, this, [this] { Update(); });
++    }
++
++private:
++    void Update()
++    {
++        QInputMethod* const im = QGuiApplication::inputMethod();
++        const QRectF kb = im->keyboardRectangle();
++        const bool shown = im->isVisible() && kb.height() > 0;
++        QWidget* const focus = QApplication::focusWidget();
++        QWidget* const dialog = focus ? focus->window() : nullptr;
++
++        // put a dialog moved earlier back
++        if ( m_moved && (!shown || m_moved != dialog) )
++        {
++            m_moved->move(m_movedFrom);
++            m_moved = nullptr;
++        }
++        if ( !shown || !dialog || dialog->windowType() != Qt::Dialog || !dialog->isVisible() )
++            return;
++
++        // on Android keyboardRectangle() is in screen coordinates (measured: top 382 of an 800 px tall screen)
++        const QRect kbScreen = kb.toRect();
++        const QRect dlg = dialog->frameGeometry();
++        const int overlap = dlg.bottom() + 1 - kbScreen.top();
++        if ( overlap <= 0 )
++            return;
++        if ( m_moved != dialog )
++        {
++            m_moved = dialog;
++            m_movedFrom = dialog->pos();
++        }
++        dialog->move(dialog->x(), qMax(0, dialog->y() - overlap));
++    }
++
++    QPointer<QWidget> m_moved;
++    QPoint m_movedFrom;
++};
 +#endif // __ANDROID__
  #include <QSurfaceFormat>
  
  #include <algorithm>
-@@ -38,9 +103,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -38,9 +154,17 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
  
      wxConvCurrent = &wxConvUTF8;
  
@@ -1324,7 +1375,7 @@ index 9521282..5896fdf 100644
      QSurfaceFormat::setDefaultFormat(format);
  
      const int argcA = argc_;
-@@ -62,7 +135,20 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
+@@ -62,7 +186,21 @@ bool wxApp::Initialize( int& argc_, wxChar** argv_ )
      // of the QApplication object. In addition, argc must be greater than zero and argv must
      // contain at least one valid character string.
  
@@ -1341,6 +1392,7 @@ index 9521282..5896fdf 100644
 +#ifdef __ANDROID__
 +    m_qtApplication->installEventFilter(new wxQtAndroidSecondaryWindowInputFix);
 +    m_qtApplication->installEventFilter(new wxQtAndroidSecondaryWindowPaintFix);
++    new wxQtAndroidKeyboardAvoider; // lives as long as the app
 +#endif
  
      if ( m_qtApplication->platformName() == "xcb" )
