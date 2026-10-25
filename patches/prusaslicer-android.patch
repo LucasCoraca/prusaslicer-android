@@ -16668,6 +16668,21 @@ index 7185e6b..dc08bee 100644
      #define BACKGROUND_MESSAGE_LISTENER
  #endif // __linux__
  
+diff --git a/src/slic3r/GUI/MainFrame.cpp b/src/slic3r/GUI/MainFrame.cpp
+index faa9db8..c6999d7 100644
+--- a/src/slic3r/GUI/MainFrame.cpp
++++ b/src/slic3r/GUI/MainFrame.cpp
+@@ -1746,7 +1746,9 @@ void MainFrame::init_menubar_as_editor()
+     // Help menu
+     auto helpMenu = generate_help_menu();
+ 
+-#if 0//ndef__APPLE__
++#ifdef __ANDROID__
++    // Android: the menus live behind the "Menu" button of the TopBar (PrusaSlicer's prepared variant). A wxMenuBar
++    // would become Qt's Android action bar: 64 dp of title strip on top and no reachable menus.
+     // append menus for Menu button from TopBar
+ 
+     m_bar_menus.AppendMenuItem(fileMenu, _L("&File"));
 diff --git a/src/slic3r/GUI/OpenGLManager.cpp b/src/slic3r/GUI/OpenGLManager.cpp
 index b42a71f..ebd736f 100644
 --- a/src/slic3r/GUI/OpenGLManager.cpp
@@ -16736,6 +16751,26 @@ index 0845799..dfd6be3 100644
      std::string distro_id = wxGetLinuxDistributionInfo().Id.ToUTF8().data(); // uses lsb-release
      std::string distro_ver = wxGetLinuxDistributionInfo().Release.ToUTF8().data();
      if (distro_id.empty()) { // lsb-release probably not available
+diff --git a/src/slic3r/GUI/TopBar.cpp b/src/slic3r/GUI/TopBar.cpp
+index cb42ef2..af85841 100644
+--- a/src/slic3r/GUI/TopBar.cpp
++++ b/src/slic3r/GUI/TopBar.cpp
+@@ -414,6 +414,15 @@ TopBarItemsCtrl::TopBarItemsCtrl(wxWindow *parent, TopBarMenus* menus/* = nullpt
+     this->SetSizer(m_sizer);
+ 
+     wxBoxSizer* left_sizer = new wxBoxSizer(wxHORIZONTAL);
++#ifdef __ANDROID__
++    // the application menu (MainFrame::init_menubar_as_editor() fills m_menus->main on Android)
++    m_menu_btn = new ButtonWithPopup(this, _L("Menu"), wxGetApp().logo_name());
++    left_sizer->Add(m_menu_btn, 0, wxALIGN_CENTER_VERTICAL | wxALL, m_btn_margin);
++    m_menu_btn->Bind(wxEVT_BUTTON, [this](wxCommandEvent& event) {
++        m_menu_btn->set_selected(true);
++        m_menus->Popup(this, &m_menus->main, m_menu_btn->get_popup_pos());
++    });
++#endif
+ /*
+ #ifdef __APPLE__
+     auto logo = new wxStaticBitmap(this, wxID_ANY, *get_bmp_bundle(wxGetApp().logo_name(), 40));
 diff --git a/src/slic3r/GUI/WebView.cpp b/src/slic3r/GUI/WebView.cpp
 index 9048f9b..4048a61 100644
 --- a/src/slic3r/GUI/WebView.cpp

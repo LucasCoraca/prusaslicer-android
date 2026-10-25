@@ -68,6 +68,16 @@ public:
             std::remove(flag.c_str());
             for (wxWindow *tlw : wxTopLevelWindows)
                 dump(tlw, 0);
+            // the Qt side of the top-level windows: menu/tool/status bars wx does not know about
+            for (wxWindow *tlw : wxTopLevelWindows)
+                if (QWidget *q = tlw->GetHandle(); q && q->isVisible())
+                    for (QObject *o : q->children())
+                        if (QWidget *c = qobject_cast<QWidget*>(o)) {
+                            const QRect g = c->geometry();
+                            __android_log_print(ANDROID_LOG_INFO, "prusa-tree", "QT %s > %s '%s' %d,%d %dx%d %s",
+                                q->metaObject()->className(), c->metaObject()->className(), c->objectName().toUtf8().constData(),
+                                g.x(), g.y(), g.width(), g.height(), c->isVisible() ? "vis" : "hid");
+                        }
             __android_log_write(ANDROID_LOG_INFO, "prusa-tree", "END");
         }
         const std::string repaint = std::string(home) + "/repaint";
